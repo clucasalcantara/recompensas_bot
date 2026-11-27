@@ -33,7 +33,6 @@ export function HomeView({
           name={house.lucasName}
           side="caio"
           data={house.lucas}
-          cycle={house.cycleMinutes}
           busy={busy}
           onRedeem={(count) =>
             run(async () => {
@@ -50,7 +49,6 @@ export function HomeView({
           name={house.giName}
           side="gi"
           data={house.gi}
-          cycle={house.cycleMinutes}
           busy={busy}
           onRedeem={(count) =>
             run(async () => {
@@ -121,51 +119,33 @@ function Person({
   name,
   side,
   data,
-  cycle,
   busy,
   onRedeem,
 }: {
   name: string;
   side: "caio" | "gi";
   data: Side;
-  cycle: number;
   busy: boolean;
   onRedeem: (count: number) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState("1");
-  const width = data.totalMinutes === 0 ? 0 : Math.round((data.bankMinutes / cycle) * 100);
-  const ready = data.perCycle > 0 ? Math.floor(data.available / data.perCycle) : 0;
+  const ready = data.perCycle > 0 ? Math.floor(Math.max(0, data.available) / data.perCycle) : 0;
   const collected = data.perCycle > 0 ? Math.floor(data.spent / data.perCycle) : 0;
-  const fresh = data.totalMinutes === 0;
-  const left = data.bankMinutes === 0 ? cycle : data.minutesToNextCycle;
   const asked = Number(count);
   const askedOk = Number.isInteger(asked) && asked >= 1 && asked <= ready;
+  const collectedText =
+    collected === 0 ? "" : collected === 1 ? "1 recompensa já coletada." : `${collected} recompensas já coletadas.`;
+  const readyText = ready === 0 ? "" : ready === 1 ? "1 disponível." : `${ready} disponíveis.`;
+  const status = [collectedText, readyText].filter(Boolean).join(" ");
   return (
     <article className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/8">
       <p className="text-sm text-muted-foreground">{name}</p>
       <p className={`font-display mt-2 text-5xl leading-none ${side === "caio" ? "text-caio" : "text-gi"}`}>
-        {data.totalMinutes}
+        {data.totalMinutes === 0 ? "Zerada" : data.totalMinutes}
       </p>
-      <p className="mt-2 text-sm text-muted-foreground">min de cardio</p>
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
-        <span
-          className={`block h-full rounded-full ${side === "caio" ? "bg-caio" : "bg-gi"}`}
-          style={{ width: `${width}%` }}
-        />
-      </div>
-      {fresh ? (
-        <p className="mt-4 text-sm text-muted-foreground">Ainda sem cardio.</p>
-      ) : (
-        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-          {data.bankMinutes} min no banco.{" "}
-          {left === 1 ? "Falta 1 min pro próximo resgate." : `Faltam ${left} min pro próximo resgate.`}
-        </p>
-      )}
-      <p className="mt-1 text-sm">
-        {ready === 0 ? "Nenhum resgate disponível." : ready === 1 ? "1 resgate disponível." : `${ready} resgates disponíveis.`}
-        {collected === 0 ? "" : collected === 1 ? " 1 recompensa já coletada." : ` ${collected} recompensas já coletadas.`}
-      </p>
+      {data.totalMinutes === 0 ? null : <p className="mt-2 text-sm text-muted-foreground">min</p>}
+      {status ? <p className="mt-4 text-sm">{status}</p> : null}
       <Button
         type="button"
         className="mt-4"
