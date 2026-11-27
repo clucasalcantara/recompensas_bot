@@ -94,6 +94,57 @@ test("sequência conta hoje e ontem, e quebra se pular um dia", () => {
   assert.equal(broken.week[0]?.minutes, 10);
 });
 
+test("um dia pulado zera a sequência e o dia de hoje ainda não quebra a de ontem", () => {
+  const wednesday = new Date("2026-11-25T15:00:00.000Z");
+  const open = summarize(
+    [
+      session({
+        minutes: 30,
+        userId: 1,
+        actorName: "Lucas",
+        createdAt: "2026-11-23T15:00:00.000Z",
+      }),
+      session({
+        minutes: 45,
+        userId: 1,
+        actorName: "Lucas",
+        createdAt: "2026-11-24T15:00:00.000Z",
+      }),
+    ],
+    wednesday,
+    TZ,
+  );
+  assert.equal(open.loggedToday, false);
+  assert.equal(open.streak, 2);
+
+  const thursday = new Date("2026-11-26T15:00:00.000Z");
+  const afterGap = summarize(
+    [
+      session({
+        minutes: 30,
+        userId: 1,
+        actorName: "Lucas",
+        createdAt: "2026-11-23T15:00:00.000Z",
+      }),
+      session({
+        minutes: 45,
+        userId: 1,
+        actorName: "Lucas",
+        createdAt: "2026-11-24T15:00:00.000Z",
+      }),
+      session({
+        minutes: 60,
+        userId: 1,
+        actorName: "Lucas",
+        createdAt: "2026-11-26T15:00:00.000Z",
+      }),
+    ],
+    thursday,
+    TZ,
+  );
+  assert.equal(afterGap.streak, 1);
+});
+
 test("ranking vazio explica que ainda não teve escada", () => {
   const text = formatRanking(summarize([], NOW, TZ), { giName: "Gi", lucasName: "Lucas" });
   assert.match(text, /Ranking vazio/);

@@ -40,6 +40,8 @@ test("texto solto só conta se for escada", () => {
   assert.deepEqual(parseStairs("+35", false), { type: "stairs", minutes: 35, note: null });
   assert.deepEqual(parseStairs("+1h", false), { type: "stairs", minutes: 60, note: null });
   assert.equal(parseStairs("+30 esteira", false).type, "rejected");
+  assert.equal(parseStairs("corri 20", false).type, "rejected");
+  assert.equal(parseStairs("correu 15", false).type, "rejected");
   assert.equal(parseStairs("escada", false).type, "need-minutes");
   assert.equal(parseStairs("bora escada amanha", false).type, "ignore");
   assert.equal(parseStairs("19:40 escada 30", false).type, "ambiguous");

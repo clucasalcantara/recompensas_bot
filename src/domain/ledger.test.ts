@@ -2,6 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { balances, redeemError, undoSessionError } from "./ledger.js";
 
+test("35 e depois 40 fecham um ciclo e deixam 15 no banco", () => {
+  const result = balances(
+    [
+      { minutes: 35, owner: "lucas" },
+      { minutes: 40, owner: "lucas" },
+    ],
+    [],
+  );
+
+  assert.equal(result.lucas.totalMinutes, 75);
+  assert.equal(result.lucas.cycles, 1);
+  assert.equal(result.lucas.bankMinutes, 15);
+  assert.equal(result.lucas.minutesToNextCycle, 45);
+  assert.deepEqual(result.boquete, { earned: 2, spent: 0, available: 2 });
+  assert.equal(result.massagem.available, 0);
+});
+
+test("coleta parcial deixa o resto do prêmio disponível", () => {
+  const before = balances([{ minutes: 180, owner: "lucas" }], []);
+  assert.deepEqual(before.boquete, { earned: 6, spent: 0, available: 6 });
+
+  const after = balances([{ minutes: 180, owner: "lucas" }], [{ kind: "boquete", minutes: 2 }]);
+  assert.deepEqual(after.boquete, { earned: 6, spent: 2, available: 4 });
+  assert.equal(redeemError(before, "boquete", 2), null);
+  assert.equal(redeemError(after, "boquete", 5), "not-enough");
+});
+
 test("minutos abaixo de 60 ficam no banco de quem subiu", () => {
   const result = balances([{ minutes: 45, owner: "lucas" }], []);
 

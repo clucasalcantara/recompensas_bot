@@ -41,8 +41,8 @@ export function formatRules(config: Pick<Config, "giName" | "lucasName">): strin
     "/brincadeira",
     "/jogo",
     "",
-    "Uma vez por dia eu lembro neste chat. O bot precisa estar ligado.",
-    "No grupo eu só respondo se me marcarem ou responderem uma mensagem minha.",
+    "De tarde eu lembro da escada. Essa mensagem não cobra prêmio.",
+    "No grupo eu respondo marcação, resposta, comando ou +minutos.",
   ].join("\n");
 }
 
@@ -231,6 +231,15 @@ export function formatParseError(
     case "ambiguous":
       return "Não entendi os minutos. Manda /escada 40.";
   }
+}
+
+export function formatOwnBalance(
+  config: Pick<Config, "giName" | "lucasName">,
+  owner: Owner,
+  current: Balances,
+): string {
+  if (owner === "gi") return formatPerson(config.giName, current.gi, "Massagem");
+  return formatPerson(config.lucasName, current.lucas, "Mamadinha");
 }
 
 function formatPerson(name: string, side: Side, prize: string): string {

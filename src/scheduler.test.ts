@@ -42,7 +42,7 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
     databaseUrl: "postgres://unused",
     togetherApiKey: "test",
     togetherModel: "test-model",
-    reminderHour: 9,
+    reminderHour: 16,
     reminderMinute: 0,
     reminderTimeZone: "America/Sao_Paulo",
     reminderChatId: null,
@@ -59,14 +59,14 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
       store,
       send,
       now: new Date(now),
-      lines: async (kind) => (kind === "dica" ? "fica perto" : "beija devagar"),
+      lines: async () => "fica perto",
     });
 
-  assert.equal(await run("2026-11-26T13:00:00.000Z"), "no-chat");
+  assert.equal(await run("2026-11-26T19:00:00.000Z"), "no-chat");
   await store.rememberChat(-100);
-  assert.equal(await run("2026-11-26T11:00:00.000Z"), "skipped");
-  assert.equal(await run("2026-11-26T13:00:00.000Z"), "sent");
-  assert.match(sent[0] ?? "", /fica perto/);
-  assert.match(sent[0] ?? "", /beija devagar/);
   assert.equal(await run("2026-11-26T18:00:00.000Z"), "skipped");
+  assert.equal(await run("2026-11-26T19:00:00.000Z"), "sent");
+  assert.match(sent[0] ?? "", /fica perto/);
+  assert.doesNotMatch(sent[0] ?? "", /coletar/);
+  assert.equal(await run("2026-11-26T22:00:00.000Z"), "skipped");
 });

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { Balances } from "./domain/ledger.js";
 import type { CoupleNames, Heat, PlayKind } from "./domain/play.js";
+import { parseDecision, reasonSystemPrompt, reasonUserPrompt, type Decision } from "./domain/reason.js";
 
 export type Tone = "romantico" | "sexual" | "misto";
 
@@ -168,12 +170,40 @@ export async function replyChat(input: {
   });
 }
 
+export async function decideIntent(input: {
+  apiKey: string;
+  model: string;
+  speaker: string;
+  partner: string;
+  lucasName: string;
+  giName: string;
+  balances: Balances;
+  text: string;
+  recent?: string[];
+  fetchImpl?: typeof fetch;
+}): Promise<Decision | null> {
+  const raw = await complete({
+    apiKey: input.apiKey,
+    model: input.model,
+    system: reasonSystemPrompt(),
+    user: reasonUserPrompt(input),
+    fetchImpl: input.fetchImpl,
+    temperature: 0,
+    maxTokens: 400,
+    json: true,
+  });
+  return parseDecision(raw);
+}
+
 async function complete(input: {
   apiKey: string;
   model: string;
   system: string;
   user: string;
   fetchImpl?: typeof fetch;
+  temperature?: number;
+  maxTokens?: number;
+  json?: boolean;
 }): Promise<string> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const response = await fetchImpl(TOGETHER_URL, {
@@ -184,8 +214,9 @@ async function complete(input: {
     },
     body: JSON.stringify({
       model: input.model,
-      temperature: 1,
-      max_tokens: 800,
+      temperature: input.temperature ?? 1,
+      max_tokens: input.maxTokens ?? 800,
+      ...(input.json ? { response_format: { type: "json_object" } } : {}),
       messages: [
         { role: "system", content: input.system },
         { role: "user", content: input.user },

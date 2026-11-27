@@ -22,7 +22,6 @@ export function buildReminder(input: {
   loggedToday: boolean;
   streak: number;
   tip: string;
-  dare: string;
 }): string {
   if (!input.everLogged) {
     return [
@@ -30,36 +29,18 @@ export function buildReminder(input: {
       "",
       `A cada ${CYCLE_MINUTES} min da própria escada, ${input.giName} ganha ${MASSAGE_PER_CYCLE} min de massagem e ${input.lucasName} ganha ${ORAL_PER_CYCLE} min de mamadinha. O que sobra fica no banco de quem subiu.`,
       "",
-      `Dica de hoje: ${input.tip}`,
-      "",
-      `Brincadeira: ${input.dare}`,
-      "",
-      "Quando subirem: /escada 20",
+      `Dica: ${input.tip}`,
     ].join("\n");
   }
 
-  const prize = prizeLine(input);
   const lines = [
-    input.loggedToday
-      ? "Hoje a escada já entrou."
-      : "Hoje ainda não teve escada.",
+    input.loggedToday ? "Hoje a escada já entrou." : "Hoje ainda não teve escada.",
     streakLine(input.streak, input.loggedToday),
     "",
     bankLine(input),
-  ];
-
-  if (prize) lines.push("", prize);
-
-  lines.push(
-    "",
-    input.loggedToday
-      ? "O cardio de hoje já tá feito. O resto é clima, e não mexe no saldo."
-      : "Dá pra andar o banco sem fechar o ciclo.",
     "",
     `Dica: ${input.tip}`,
-    "",
-    `Brincadeira: ${input.dare}`,
-  );
+  ];
 
   return lines.join("\n");
 }
@@ -74,27 +55,6 @@ function sideBank(name: string, side: Balances["lucas"]): string {
   if (side.totalMinutes === 0) return `${name} zerada.`;
   const left = side.bankMinutes === 0 ? CYCLE_MINUTES : side.minutesToNextCycle;
   return `${name}: ${side.bankMinutes} min no banco. Faltam ${left} min.`;
-}
-
-function prizeLine(input: {
-  giName: string;
-  lucasName: string;
-  current: Balances;
-}): string | null {
-  const lines: string[] = [];
-  if (input.current.massagem.available > 0) {
-    lines.push(
-      `${input.giName} tem ${input.current.massagem.available} min de massagem pra coletar.`,
-    );
-  }
-  if (input.current.boquete.available > 0) {
-    lines.push(
-      `${input.lucasName} tem ${input.current.boquete.available} min de mamadinha pra coletar.`,
-    );
-  }
-  if (lines.length === 0) return null;
-  lines.push("É só mandar /coletar.");
-  return lines.join("\n");
 }
 
 function streakLine(streak: number, loggedToday: boolean): string {

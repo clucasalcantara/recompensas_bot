@@ -1,7 +1,7 @@
 import type { Config } from "./config.js";
 import { summarize } from "./domain/ranking.js";
 import { buildReminder, shouldSendReminder } from "./domain/reminder.js";
-import { generateLine, rollTone, type Tone } from "./suggest.js";
+import { generateLine, rollTone } from "./suggest.js";
 import type { Store } from "./store.js";
 
 export function startDailyReminder(deps: {
@@ -28,7 +28,7 @@ export async function runDailyReminder(deps: {
   store: Store;
   send: (chatId: number, text: string) => Promise<void>;
   now?: Date;
-  lines?: (kind: "dica" | "desafio") => Promise<string>;
+  lines?: (kind: "dica") => Promise<string>;
 }): Promise<"sent" | "skipped" | "no-chat"> {
   const now = deps.now ?? new Date();
   const timeZone = deps.config.reminderTimeZone;
@@ -51,8 +51,6 @@ export async function runDailyReminder(deps: {
 
   const sessions = await deps.store.listSessions();
   const summary = summarize(sessions, now, timeZone);
-  const tipTone = rollTone();
-  const dareTone: Tone = tipTone === "romantico" ? "sexual" : "romantico";
   const text = buildReminder({
     giName: deps.config.giName,
     lucasName: deps.config.lucasName,
@@ -60,8 +58,7 @@ export async function runDailyReminder(deps: {
     everLogged: sessions.length > 0,
     loggedToday: summary.loggedToday,
     streak: summary.streak,
-    tip: await dailyLine(deps, "dica", tipTone),
-    dare: await dailyLine(deps, "desafio", dareTone),
+    tip: await dailyLine(deps, "dica", rollTone()),
   });
 
   await deps.send(chatId, text);
@@ -77,10 +74,10 @@ function destinationChat(config: Config): number | null {
 async function dailyLine(
   deps: {
     config: Config;
-    lines?: (kind: "dica" | "desafio") => Promise<string>;
+    lines?: (kind: "dica") => Promise<string>;
   },
-  kind: "dica" | "desafio",
-  tone: Tone,
+  kind: "dica",
+  tone: ReturnType<typeof rollTone>,
 ): Promise<string> {
   if (deps.lines) return deps.lines(kind);
   return generateLine({

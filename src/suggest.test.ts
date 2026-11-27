@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { balances } from "./domain/ledger.js";
 import {
   chatSystemPrompt,
   chatUserPrompt,
   composePlay,
+  decideIntent,
   readCompletion,
   rollTone,
   systemPrompt,
@@ -110,5 +112,104 @@ test("dado e moeda sorteiam o jogo e geram o pedido", async () => {
       heat: 2,
     }),
     /^Coroa\. Gi conduz\.\nconduz o beijo$/,
+  );
+});
+
+const books = balances(
+  [
+    { minutes: 40, owner: "lucas" },
+    { minutes: 35, owner: "lucas" },
+  ],
+  [],
+);
+
+test("a decisão vai com a conta real e temperatura zero", async () => {
+  const calls: { url: string; body: Record<string, unknown>; authorization: string }[] = [];
+  const fetchImpl: typeof fetch = async (url, init) => {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    calls.push({
+      url: String(url),
+      body,
+      authorization: new Headers(init?.headers).get("authorization") ?? "",
+    });
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: '{"action":"balance","scope":"me"}' } }] }),
+      { status: 200 },
+    );
+  };
+
+  const decision = await decideIntent({
+    apiKey: "secret",
+    model: "modelo",
+    speaker: "Caio",
+    partner: "Gi",
+    lucasName: "Caio",
+    giName: "Gi",
+    balances: books,
+    text: "Quantos minutos eu tenho??",
+    recent: ["Gi: subi a escada", "Caio: quanto eu tenho"],
+    fetchImpl,
+  });
+
+  assert.deepEqual(decision, { action: "balance", scope: "me" });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.url, /chat\/completions$/);
+  assert.equal(calls[0]!.authorization, "Bearer secret");
+  assert.equal(calls[0]!.body.model, "modelo");
+  assert.equal(calls[0]!.body.temperature, 0);
+  assert.equal(calls[0]!.body.max_tokens, 400);
+  assert.deepEqual(calls[0]!.body.response_format, { type: "json_object" });
+  const messages = calls[0]!.body.messages as { role: string; content: string }[];
+  const system = messages.find((message) => message.role === "system")?.content ?? "";
+  const user = messages.find((message) => message.role === "user")?.content ?? "";
+  assert.match(system, /Como que estão os saldos/);
+  assert.match(user, /Caio: 75 min/);
+  assert.match(user, /Gi: 0 min/);
+  assert.match(user, /Quantos minutos eu tenho\?\?/);
+  assert.match(user, /Gi: subi a escada/);
+  assert.doesNotMatch(user, /secret/);
+});
+
+test("o fio aguenta o JSON sujo e não transforma erro da API em ação", async () => {
+  const scripted = [
+    ['```json\n{"action":"balance","scope":"both"}\n```', { action: "balance", scope: "both" }],
+    ['{"action":"stairs","minutes":35,"note":null}', { action: "stairs", minutes: 35, note: null }],
+    ['{"action":"chat","say":"Caio, não consigo acessar essa informação agora."}', null],
+    ["não é json", null],
+  ] as const;
+
+  for (const [content, expected] of scripted) {
+    const fetchImpl: typeof fetch = async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+    assert.deepEqual(
+      await decideIntent({
+        apiKey: "k",
+        model: "m",
+        speaker: "Caio",
+        partner: "Gi",
+        lucasName: "Caio",
+        giName: "Gi",
+        balances: books,
+        text: "Como que estão os saldos ?",
+        fetchImpl,
+      }),
+      expected,
+      content,
+    );
+  }
+
+  const failing: typeof fetch = async () => new Response("boom", { status: 503 });
+  await assert.rejects(() =>
+    decideIntent({
+      apiKey: "k",
+      model: "m",
+      speaker: "Caio",
+      partner: "Gi",
+      lucasName: "Caio",
+      giName: "Gi",
+      balances: books,
+      text: "Oi",
+      fetchImpl: failing,
+    }),
   );
 });

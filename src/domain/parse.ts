@@ -2,7 +2,7 @@ import { sessionError } from "./ledger.js";
 import { MAX_SESSION_MINUTES, REWARD_PER_CYCLE, type RewardKind } from "./rules.js";
 
 const REJECTED =
-  /\b(esteira|bike|bicicleta|corrida|correr|caminhada|eliptic[oa]|elíptic[oa]|remo|natacao|natação|hiit|spinning)\b/i;
+  /\b(esteira|bike|bicicleta|corrida|correr|corri|correu|corre|correndo|caminhada|eliptic[oa]|elíptic[oa]|remo|natacao|natação|hiit|spinning)\b/i;
 
 export type StairsParse =
   | { type: "stairs"; minutes: number; note: string | null }

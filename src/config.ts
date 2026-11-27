@@ -34,7 +34,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl,
     togetherApiKey,
     togetherModel: env.TOGETHER_MODEL?.trim() || "openai/gpt-oss-120b",
-    reminderHour: parseBounded(env.REMINDER_HOUR, 9, 23, "REMINDER_HOUR"),
+    reminderHour: parseBounded(env.REMINDER_HOUR, 16, 23, "REMINDER_HOUR"),
     reminderMinute: parseBounded(env.REMINDER_MINUTE, 0, 59, "REMINDER_MINUTE"),
     reminderTimeZone:
       env.REMINDER_TZ?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone,
