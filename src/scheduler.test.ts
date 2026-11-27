@@ -67,14 +67,14 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
       store,
       send,
       now: new Date(now),
-      lines: async () => "fica perto",
     });
 
   assert.equal(await run("2026-11-26T19:00:00.000Z"), "no-chat");
   await store.rememberChat(-100);
   assert.equal(await run("2026-11-26T18:00:00.000Z"), "skipped");
   assert.equal(await run("2026-11-26T19:00:00.000Z"), "sent");
-  assert.match(sent[0] ?? "", /fica perto/);
+  assert.match(sent[0] ?? "", /ainda não começou/);
+  assert.doesNotMatch(sent[0] ?? "", /Dica/);
   assert.doesNotMatch(sent[0] ?? "", /coletar/);
   assert.equal(await run("2026-11-26T22:00:00.000Z"), "skipped");
 });

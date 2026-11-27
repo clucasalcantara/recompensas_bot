@@ -1,7 +1,6 @@
 import type { Config } from "./config.js";
 import { summarize } from "./domain/ranking.js";
 import { buildReminder, shouldSendReminder } from "./domain/reminder.js";
-import { generateLine, rollTone } from "./suggest.js";
 import type { Store } from "./store.js";
 
 export function startDailyReminder(deps: {
@@ -28,7 +27,6 @@ export async function runDailyReminder(deps: {
   store: Store;
   send: (chatId: number, text: string) => Promise<void>;
   now?: Date;
-  lines?: (kind: "dica") => Promise<string>;
 }): Promise<"sent" | "skipped" | "no-chat"> {
   const now = deps.now ?? new Date();
   const timeZone = deps.config.reminderTimeZone;
@@ -58,7 +56,6 @@ export async function runDailyReminder(deps: {
     everLogged: sessions.length > 0,
     loggedToday: summary.loggedToday,
     streak: summary.streak,
-    tip: await dailyLine(deps, "dica", rollTone()),
   });
 
   await deps.send(chatId, text);
@@ -69,22 +66,4 @@ export async function runDailyReminder(deps: {
 function destinationChat(config: Config): number | null {
   if (!config.groupsEnabled) return config.allowedUserIds[0] ?? null;
   return config.reminderChatId;
-}
-
-async function dailyLine(
-  deps: {
-    config: Config;
-    lines?: (kind: "dica") => Promise<string>;
-  },
-  kind: "dica",
-  tone: ReturnType<typeof rollTone>,
-): Promise<string> {
-  if (deps.lines) return deps.lines(kind);
-  return generateLine({
-    apiKey: deps.config.togetherApiKey,
-    model: deps.config.togetherModel,
-    names: { giName: deps.config.giName, lucasName: deps.config.lucasName },
-    kind,
-    tone,
-  });
 }

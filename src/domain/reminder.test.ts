@@ -100,11 +100,10 @@ test("sem registro o lembrete convida, e com registro cobra o dia", () => {
     everLogged: false,
     loggedToday: false,
     streak: 0,
-    tip: "fica perto",
   });
   assert.match(empty, /ainda não começou/);
   assert.match(empty, /massagem/);
-  assert.match(empty, /fica perto/);
+  assert.doesNotMatch(empty, /Dica/);
   assert.doesNotMatch(empty, /coletar/);
 
   const waiting = buildReminder({
@@ -120,11 +119,11 @@ test("sem registro o lembrete convida, e com registro cobra o dia", () => {
     everLogged: true,
     loggedToday: false,
     streak: 1,
-    tip: "pergunta o ritmo",
   });
   assert.match(waiting, /ainda não teve escada/);
-  assert.match(waiting, /pergunta o ritmo/);
-  assert.match(waiting, /20 min no banco/);
+  assert.match(waiting, /Lucas: 80 min/);
+  assert.doesNotMatch(waiting, /Dica/);
+  assert.doesNotMatch(waiting, /no banco/);
   assert.doesNotMatch(waiting, /coletar/);
   assert.doesNotMatch(waiting, /mamadinha/);
 });

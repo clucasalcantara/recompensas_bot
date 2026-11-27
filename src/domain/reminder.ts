@@ -21,28 +21,21 @@ export function buildReminder(input: {
   everLogged: boolean;
   loggedToday: boolean;
   streak: number;
-  tip: string;
 }): string {
   if (!input.everLogged) {
     return [
       "A escada ainda não começou.",
       "",
       `A cada ${CYCLE_MINUTES} min da própria escada, ${input.giName} ganha ${MASSAGE_PER_CYCLE} min de massagem e ${input.lucasName} ganha ${ORAL_PER_CYCLE} min de mamadinha. O que sobra fica no banco de quem subiu.`,
-      "",
-      `Dica: ${input.tip}`,
     ].join("\n");
   }
 
-  const lines = [
+  return [
     input.loggedToday ? "Hoje a escada já entrou." : "Hoje ainda não teve escada.",
     streakLine(input.streak, input.loggedToday),
     "",
     bankLine(input),
-    "",
-    `Dica: ${input.tip}`,
-  ];
-
-  return lines.join("\n");
+  ].join("\n");
 }
 
 function bankLine(input: { giName: string; lucasName: string; current: Balances }): string {
@@ -55,8 +48,7 @@ function bankLine(input: { giName: string; lucasName: string; current: Balances 
 function sideBank(name: string, side: Balances["lucas"], perCycle: number): string {
   const open = openAccount(side, perCycle);
   if (open.totalMinutes === 0) return `${name} zerada.`;
-  const left = open.bankMinutes === 0 ? CYCLE_MINUTES : open.minutesToNextCycle;
-  return `${name}: ${open.bankMinutes} min no banco. Faltam ${left} min.`;
+  return `${name}: ${open.totalMinutes} min.`;
 }
 
 function streakLine(streak: number, loggedToday: boolean): string {
