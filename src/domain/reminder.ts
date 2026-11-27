@@ -20,40 +20,67 @@ export function buildReminder(input: {
   current: Balances;
   everLogged: boolean;
   loggedToday: boolean;
+  lucasClimbedToday: boolean;
+  giClimbedToday: boolean;
   streak: number;
 }): string {
   if (!input.everLogged) {
     return [
-      "A escada ainda não começou.",
+      "Oi, vocês dois.",
       "",
-      `A cada ${CYCLE_MINUTES} min da própria escada, ${input.giName} ganha ${MASSAGE_PER_CYCLE} min de massagem e ${input.lucasName} ganha ${ORAL_PER_CYCLE} min de mamadinha. O que sobra fica no banco de quem subiu.`,
+      "A escada ainda não começou.",
+      `A cada ${CYCLE_MINUTES} min da própria escada, ${input.giName} ganha ${MASSAGE_PER_CYCLE} min de massagem e ${input.lucasName} ganha ${ORAL_PER_CYCLE} min de mamadinha.`,
     ].join("\n");
   }
 
   return [
-    input.loggedToday ? "Hoje a escada já entrou." : "Hoje ainda não teve escada.",
-    streakLine(input.streak, input.loggedToday),
+    "Oi, vocês dois.",
     "",
-    bankLine(input),
+    dayLine(input),
+    "",
+    personLine(input.lucasName, input.current.lucas, ORAL_PER_CYCLE, "mamadinha", input.lucasClimbedToday),
+    personLine(input.giName, input.current.gi, MASSAGE_PER_CYCLE, "massagem", input.giClimbedToday),
+    "",
+    input.loggedToday ? "Se sobrar fôlego, ela aceita mais." : "A escada está lá quando vocês quiserem.",
   ].join("\n");
 }
 
-function bankLine(input: { giName: string; lucasName: string; current: Balances }): string {
-  return [
-    sideBank(input.lucasName, input.current.lucas, ORAL_PER_CYCLE),
-    sideBank(input.giName, input.current.gi, MASSAGE_PER_CYCLE),
-  ].join("\n");
+function dayLine(input: { loggedToday: boolean; streak: number; lucasClimbedToday: boolean; giClimbedToday: boolean }): string {
+  if (input.lucasClimbedToday && input.giClimbedToday) {
+    return input.streak > 1 ? `Hoje os dois já subiram. São ${input.streak} dias seguidos.` : "Hoje os dois já subiram.";
+  }
+  if (!input.loggedToday && input.streak > 1) {
+    return `Hoje a escada ainda está parada. A sequência de ${input.streak} dias aguenta mais uma subida.`;
+  }
+  if (!input.loggedToday && input.streak === 1) return "Ontem teve escada. Hoje ela ainda está esperando.";
+  if (!input.loggedToday) return "Hoje a escada ainda está parada.";
+  return input.streak > 1 ? `Hoje a escada já andou. São ${input.streak} dias seguidos.` : "Hoje a escada já andou.";
 }
 
-function sideBank(name: string, side: Balances["lucas"], perCycle: number): string {
+function personLine(
+  name: string,
+  side: Balances["lucas"],
+  perCycle: number,
+  prize: string,
+  climbedToday: boolean,
+): string {
   const open = openAccount(side, perCycle);
-  if (open.totalMinutes === 0) return `${name} zerada.`;
-  return `${name}: ${open.totalMinutes} min.`;
-}
+  const available = Math.max(0, side.reward.available);
+  const spent = Math.max(0, side.reward.spent);
 
-function streakLine(streak: number, loggedToday: boolean): string {
-  if (streak === 0) return "Sequência parada.";
-  const days = streak === 1 ? "1 dia" : `${streak} dias`;
-  if (!loggedToday) return `Sequência: ${days}. Hoje ainda dá tempo de não quebrar.`;
-  return `Sequência: ${days}.`;
+  if (open.totalMinutes === 0 && spent === 0) {
+    return `${name}, a sua escada ainda está zerada.`;
+  }
+
+  if (open.totalMinutes === 0) {
+    const today = climbedToday ? "Hoje você já passou por ela." : "Hoje a sua ainda não andou.";
+    return `${name}, você já coletou ${spent} min de ${prize}. ${today}`;
+  }
+
+  const today = climbedToday ? "Hoje você já subiu." : "Hoje você ainda não subiu.";
+  if (available > 0) {
+    return `${name}, você tem ${open.totalMinutes} min. ${today} Dá pra coletar ${available} min de ${prize}, ou deixar crescer.`;
+  }
+  const left = open.bankMinutes === 0 ? CYCLE_MINUTES : open.minutesToNextCycle;
+  return `${name}, você tem ${open.totalMinutes} min. ${today} Faltam ${left} min pra fechar a próxima.`;
 }
