@@ -207,6 +207,41 @@ export async function decideIntent(input: {
   return parseAgent(raw);
 }
 
+export function reminderSystemPrompt(): string {
+  return [
+    "Você manda o lembrete da tarde para um casal adulto, em português do Brasil.",
+    "Fale com os dois, com calor. Pode ter humor. Não seja um relatório.",
+    "Cada mensagem tem forma própria. Mude a abertura, a ordem e o fecho. Não repita um esqueleto.",
+    "Use só os fatos recebidos. Não invente minuto, prêmio, nem quem subiu.",
+    "Os minutos que ainda valem são o saldo. Não troque esse número por outra conta.",
+    "Se um prêmio disponível é 0, não ofereça coleta. Se a pessoa não subiu hoje, pode dizer isso sem transformar em lista.",
+    "Sem título, sem lista, sem emoji, sem a palavra Dica.",
+    "Umas poucas frases. Sem explicar a regra, a menos que a conta ainda não tenha escada.",
+  ].join(" ");
+}
+
+export function reminderUserPrompt(facts: string, seed: string): string {
+  return ["Fatos da conta. Não invente outro número.", facts, `Semente: ${seed}`].join("\n");
+}
+
+export async function writeReminder(input: {
+  apiKey: string;
+  model: string;
+  facts: string;
+  seed?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  return complete({
+    apiKey: input.apiKey,
+    model: input.model,
+    system: reminderSystemPrompt(),
+    user: reminderUserPrompt(input.facts, input.seed ?? randomUUID()),
+    fetchImpl: input.fetchImpl,
+    temperature: 1,
+    maxTokens: 400,
+  });
+}
+
 export async function phraseAccount(input: {
   apiKey: string;
   model: string;

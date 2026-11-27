@@ -1,7 +1,9 @@
 import type { Config } from "./config.js";
+import { randomUUID } from "node:crypto";
 import { summarize } from "./domain/ranking.js";
-import { buildReminder, shouldSendReminder } from "./domain/reminder.js";
+import { reminderFacts, shouldSendReminder } from "./domain/reminder.js";
 import { zonedStamp } from "./domain/time.js";
+import { writeReminder } from "./suggest.js";
 import type { Store } from "./store.js";
 
 export function startDailyReminder(deps: {
@@ -28,6 +30,7 @@ export async function runDailyReminder(deps: {
   store: Store;
   send: (chatId: number, text: string) => Promise<void>;
   now?: Date;
+  write?: (facts: string) => Promise<string>;
 }): Promise<"sent" | "skipped" | "no-chat"> {
   const now = deps.now ?? new Date();
   const timeZone = deps.config.reminderTimeZone;
@@ -50,7 +53,7 @@ export async function runDailyReminder(deps: {
 
   const sessions = await deps.store.listSessions();
   const summary = summarize(sessions, now, timeZone);
-  const text = buildReminder({
+  const facts = reminderFacts({
     giName: deps.config.giName,
     lucasName: deps.config.lucasName,
     current: await deps.store.balances(),
@@ -60,10 +63,26 @@ export async function runDailyReminder(deps: {
     giClimbedToday: climbedOn(sessions, deps.config.giUserId, summary.today, timeZone),
     streak: summary.streak,
   });
+  const text = deps.write
+    ? await deps.write(facts)
+    : await writeReminder({
+        apiKey: deps.config.togetherApiKey,
+        model: deps.config.togetherModel,
+        facts,
+        seed: `${summary.today}-${randomUUID()}`,
+      });
+  if (!reminderStaysInside(text, facts)) {
+    throw new Error("O lembrete inventou um número que não está na conta.");
+  }
 
   await deps.send(chatId, text);
   await deps.store.setLastReminderDate(today);
   return "sent";
+}
+
+function reminderStaysInside(text: string, facts: string): boolean {
+  const known = new Set(facts.match(/\d+/g) ?? []);
+  return (text.match(/\d+/g) ?? []).every((number) => known.has(number));
 }
 
 function climbedOn(

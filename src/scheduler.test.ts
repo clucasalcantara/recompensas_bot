@@ -58,6 +58,7 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
     groupsEnabled: true,
   } satisfies Config;
   const sent: string[] = [];
+  const factsSeen: string[] = [];
   const send = async (chatId: number, text: string) => {
     sent.push(`${chatId}:${text}`);
   };
@@ -67,14 +68,17 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
       store,
       send,
       now: new Date(now),
+      write: async (facts) => {
+        factsSeen.push(facts);
+        return "mensagem livre do dia";
+      },
     });
 
   assert.equal(await run("2026-11-26T19:00:00.000Z"), "no-chat");
   await store.rememberChat(-100);
   assert.equal(await run("2026-11-26T18:00:00.000Z"), "skipped");
   assert.equal(await run("2026-11-26T19:00:00.000Z"), "sent");
-  assert.match(sent[0] ?? "", /ainda não começou/);
-  assert.doesNotMatch(sent[0] ?? "", /Dica/);
-  assert.doesNotMatch(sent[0] ?? "", /coletar/);
+  assert.match(sent[0] ?? "", /mensagem livre do dia/);
+  assert.match(factsSeen[0] ?? "", /Já existiu escada na conta: não/);
   assert.equal(await run("2026-11-26T22:00:00.000Z"), "skipped");
 });

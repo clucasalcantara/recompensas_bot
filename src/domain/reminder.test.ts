@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { balances } from "./ledger.js";
-import { buildReminder, shouldSendReminder } from "./reminder.js";
+import { reminderFacts, shouldSendReminder } from "./reminder.js";
 
 const TZ = "America/Sao_Paulo";
 
@@ -92,8 +92,8 @@ test("em Vancouver o lembrete é às 16h, não às 9h", () => {
   );
 });
 
-test("sem registro o lembrete convida, e com registro cobra o dia", () => {
-  const empty = buildReminder({
+test("os fatos do lembrete trazem o saldo aberto, sem texto pronto", () => {
+  const empty = reminderFacts({
     giName: "Gi",
     lucasName: "Lucas",
     current: balances([], []),
@@ -103,12 +103,11 @@ test("sem registro o lembrete convida, e com registro cobra o dia", () => {
     giClimbedToday: false,
     streak: 0,
   });
-  assert.match(empty, /Oi, vocês dois/);
-  assert.match(empty, /ainda não começou/);
-  assert.match(empty, /massagem/);
-  assert.doesNotMatch(empty, /Dica/);
+  assert.match(empty, /Já existiu escada na conta: não/);
+  assert.match(empty, /5 min de massagem/);
+  assert.doesNotMatch(empty, /Oi, vocês dois/);
 
-  const waiting = buildReminder({
+  const waiting = reminderFacts({
     giName: "Gi",
     lucasName: "Lucas",
     current: balances(
@@ -124,11 +123,9 @@ test("sem registro o lembrete convida, e com registro cobra o dia", () => {
     giClimbedToday: false,
     streak: 1,
   });
-  assert.match(waiting, /Oi, vocês dois/);
-  assert.match(waiting, /Lucas, você tem 80 min/);
-  assert.match(waiting, /2 min de mamadinha/);
-  assert.match(waiting, /Gi, você tem 60 min/);
-  assert.match(waiting, /5 min de massagem/);
-  assert.doesNotMatch(waiting, /Dica/);
-  assert.doesNotMatch(waiting, /no banco/);
+  assert.match(waiting, /Lucas: minutos que ainda valem: 80/);
+  assert.match(waiting, /mamadinha disponível para coletar: 2 min/);
+  assert.match(waiting, /Gi: minutos que ainda valem: 60/);
+  assert.match(waiting, /massagem disponível para coletar: 5 min/);
+  assert.match(waiting, /Alguém subiu hoje: não/);
 });
