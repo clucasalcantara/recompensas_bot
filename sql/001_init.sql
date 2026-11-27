@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS sessions (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  minutes INTEGER NOT NULL,
+  note TEXT,
+  actor_name TEXT NOT NULL,
+  user_id BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS redemptions (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('massagem', 'boquete')),
+  minutes INTEGER NOT NULL,
+  actor_name TEXT NOT NULL,
+  user_id BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
