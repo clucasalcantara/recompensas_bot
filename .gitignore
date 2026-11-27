@@ -7,3 +7,5 @@ data
 .env
 *.sqlite
 *.sqlite-journal
+.vercel
+.env*
