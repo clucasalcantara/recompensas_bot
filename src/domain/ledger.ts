@@ -5,7 +5,9 @@ import {
   type RewardKind,
 } from "./rules.js";
 
-export type SessionInput = { minutes: number };
+export type Owner = "lucas" | "gi";
+
+export type SessionInput = { minutes: number; owner?: Owner };
 export type RedemptionInput = { kind: RewardKind; minutes: number };
 
 export type Bucket = {
@@ -14,11 +16,17 @@ export type Bucket = {
   available: number;
 };
 
-export type Balances = {
+export type Side = {
   totalMinutes: number;
   cycles: number;
   bankMinutes: number;
   minutesToNextCycle: number;
+  reward: Bucket;
+};
+
+export type Balances = {
+  lucas: Side;
+  gi: Side;
   massagem: Bucket;
   boquete: Bucket;
 };
@@ -39,17 +47,14 @@ export function balances(
   sessions: SessionInput[],
   redemptions: RedemptionInput[],
 ): Balances {
-  const totalMinutes = sessions.reduce((sum, session) => sum + session.minutes, 0);
-  const cycles = Math.floor(totalMinutes / CYCLE_MINUTES);
-  const bankMinutes = totalMinutes % CYCLE_MINUTES;
+  const lucas = side(sessions, "lucas", "boquete", redemptions);
+  const gi = side(sessions, "gi", "massagem", redemptions);
 
   return {
-    totalMinutes,
-    cycles,
-    bankMinutes,
-    minutesToNextCycle: CYCLE_MINUTES - bankMinutes,
-    massagem: bucket("massagem", cycles, redemptions),
-    boquete: bucket("boquete", cycles, redemptions),
+    lucas,
+    gi,
+    massagem: gi.reward,
+    boquete: lucas.reward,
   };
 }
 
@@ -74,6 +79,27 @@ export function undoSessionError(
     return "undo-would-overdraw";
   }
   return null;
+}
+
+function side(
+  sessions: SessionInput[],
+  owner: Owner,
+  kind: RewardKind,
+  redemptions: RedemptionInput[],
+): Side {
+  const totalMinutes = sessions
+    .filter((session) => (session.owner ?? "lucas") === owner)
+    .reduce((sum, session) => sum + session.minutes, 0);
+  const cycles = Math.floor(totalMinutes / CYCLE_MINUTES);
+  const bankMinutes = totalMinutes % CYCLE_MINUTES;
+
+  return {
+    totalMinutes,
+    cycles,
+    bankMinutes,
+    minutesToNextCycle: CYCLE_MINUTES - bankMinutes,
+    reward: bucket(kind, cycles, redemptions),
+  };
 }
 
 function bucket(

@@ -1,15 +1,24 @@
-import { balances } from "./domain/ledger.js";
+import { balances, type Owner } from "./domain/ledger.js";
+import type { Preference } from "./domain/prefs.js";
 import type { LedgerEvent, Redemption, Session, Store } from "./store.js";
 
-export function createMemoryStore(): Store {
+export function createMemoryStore(people: { giUserId?: number | null } = {}): Store {
+  const giUserId = people.giUserId ?? null;
   const sessions: Session[] = [];
   const redemptions: Redemption[] = [];
+  const preferences: Preference[] = [];
   const meta = new Map<string, string>();
   let nextId = 1;
 
   return {
     async balances() {
-      return balances(sessions, redemptions);
+      return balances(
+        sessions.map((session) => ({
+          minutes: session.minutes,
+          owner: (giUserId !== null && session.userId === giUserId ? "gi" : "lucas") as Owner,
+        })),
+        redemptions,
+      );
     },
     async listSessions() {
       return [...sessions];
@@ -83,6 +92,30 @@ export function createMemoryStore(): Store {
     },
     async setLastReminderDate(date) {
       meta.set("last_reminder_on", date);
+    },
+    async listPreferences() {
+      return [...preferences];
+    },
+    async addPreference(input) {
+      const existing = preferences.find(
+        (item) =>
+          item.userId === input.userId &&
+          item.about === input.about &&
+          item.kind === input.kind &&
+          item.note.toLowerCase() === input.note.toLowerCase(),
+      );
+      if (existing) return { preference: existing, fresh: false };
+      const preference: Preference = { id: nextId++, ...input };
+      preferences.push(preference);
+      return { preference, fresh: true };
+    },
+    async getPendingPref(userId) {
+      return meta.get(`pref_ask:${userId}`) ?? null;
+    },
+    async setPendingPref(userId, questionId) {
+      const key = `pref_ask:${userId}`;
+      if (!questionId) meta.delete(key);
+      else meta.set(key, questionId);
     },
   };
 }

@@ -28,7 +28,7 @@ export function buildReminder(input: {
     return [
       "A escada ainda não começou.",
       "",
-      `A cada ${CYCLE_MINUTES} min, ${input.giName} ganha ${MASSAGE_PER_CYCLE} min de massagem e ${input.lucasName} ganha ${ORAL_PER_CYCLE} min de boquete. O que sobra fica no banco.`,
+      `A cada ${CYCLE_MINUTES} min da própria escada, ${input.giName} ganha ${MASSAGE_PER_CYCLE} min de massagem e ${input.lucasName} ganha ${ORAL_PER_CYCLE} min de mamadinha. O que sobra fica no banco de quem subiu.`,
       "",
       `Dica de hoje: ${input.tip}`,
       "",
@@ -45,7 +45,7 @@ export function buildReminder(input: {
       : "Hoje ainda não teve escada.",
     streakLine(input.streak, input.loggedToday),
     "",
-    bankLine(input.current),
+    bankLine(input),
   ];
 
   if (prize) lines.push("", prize);
@@ -64,11 +64,16 @@ export function buildReminder(input: {
   return lines.join("\n");
 }
 
-function bankLine(current: Balances): string {
-  if (current.bankMinutes === 0) {
-    return `Banco 0/${CYCLE_MINUTES}. Faltam ${CYCLE_MINUTES} min pro próximo prêmio.`;
-  }
-  return `Banco ${current.bankMinutes}/${CYCLE_MINUTES}. Faltam ${current.minutesToNextCycle} min pro próximo prêmio.`;
+function bankLine(input: { giName: string; lucasName: string; current: Balances }): string {
+  return [sideBank(input.lucasName, input.current.lucas), sideBank(input.giName, input.current.gi)].join(
+    "\n",
+  );
+}
+
+function sideBank(name: string, side: Balances["lucas"]): string {
+  if (side.totalMinutes === 0) return `${name} zerada.`;
+  const left = side.bankMinutes === 0 ? CYCLE_MINUTES : side.minutesToNextCycle;
+  return `${name}: ${side.bankMinutes} min no banco. Faltam ${left} min.`;
 }
 
 function prizeLine(input: {
@@ -84,7 +89,7 @@ function prizeLine(input: {
   }
   if (input.current.boquete.available > 0) {
     lines.push(
-      `${input.lucasName} tem ${input.current.boquete.available} min de boquete pra coletar.`,
+      `${input.lucasName} tem ${input.current.boquete.available} min de mamadinha pra coletar.`,
     );
   }
   if (lines.length === 0) return null;

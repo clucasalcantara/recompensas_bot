@@ -37,6 +37,8 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
     allowedUserIds: [1],
     giName: "Gi",
     lucasName: "Lucas",
+    lucasUserId: 1,
+    giUserId: 2,
     databaseUrl: "postgres://unused",
     togetherApiKey: "test",
     togetherModel: "test-model",
@@ -44,6 +46,8 @@ test("o lembrete sai uma vez no chat em que alguém falou", async () => {
     reminderMinute: 0,
     reminderTimeZone: "America/Sao_Paulo",
     reminderChatId: null,
+    groupChatId: null,
+    groupsEnabled: true,
   } satisfies Config;
   const sent: string[] = [];
   const send = async (chatId: number, text: string) => {

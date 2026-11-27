@@ -66,7 +66,13 @@ test("sem registro o lembrete convida, e com registro cobra o dia", () => {
   const waiting = buildReminder({
     giName: "Gi",
     lucasName: "Lucas",
-    current: balances([{ minutes: 80 }], []),
+    current: balances(
+      [
+        { minutes: 80, owner: "lucas" },
+        { minutes: 60, owner: "gi" },
+      ],
+      [],
+    ),
     everLogged: true,
     loggedToday: false,
     streak: 1,
@@ -75,6 +81,6 @@ test("sem registro o lembrete convida, e com registro cobra o dia", () => {
   });
   assert.match(waiting, /ainda não teve escada/);
   assert.match(waiting, /massagem pra coletar/);
-  assert.match(waiting, /boquete pra coletar/);
-  assert.match(waiting, /Banco 20\/60/);
+  assert.match(waiting, /mamadinha pra coletar/);
+  assert.match(waiting, /20 min no banco/);
 });

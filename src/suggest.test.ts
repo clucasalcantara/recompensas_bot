@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { composePlay, readCompletion, rollTone, systemPrompt, userPrompt } from "./suggest.js";
+import {
+  chatSystemPrompt,
+  chatUserPrompt,
+  composePlay,
+  readCompletion,
+  rollTone,
+  systemPrompt,
+  userPrompt,
+} from "./suggest.js";
 
 const names = { giName: "Gi", lucasName: "Lucas" };
 
@@ -13,8 +21,8 @@ test("o tom sorteia romance, sexo e os dois", () => {
 test("o pedido pede romance e sexo, sem catálogo", () => {
   const system = systemPrompt();
   assert.match(system, /romântico|Romance/);
-  assert.match(system, /Sexo/);
-  assert.match(system, /Não entregue só sexo/);
+  assert.match(system, /monogâmico/i);
+  assert.match(system, /Nada nojento/);
 
   const sexual = userPrompt({
     names,
@@ -25,6 +33,28 @@ test("o pedido pede romance e sexo, sem catálogo", () => {
   assert.match(sexual, /Gi e Lucas/);
   assert.match(sexual, /explícito/);
   assert.doesNotMatch(sexual, /Deixa o celular/);
+  assert.match(
+    userPrompt({ names, kind: "dica", tone: "romantico", seed: "abc", tastes: "Caio gosta de beijo." }),
+    /Caio gosta de beijo/,
+  );
+});
+
+test("o papo usa a conta de verdade e não mexe nela", () => {
+  const system = chatSystemPrompt();
+  assert.match(system, /não muda saldo/i);
+  assert.match(system, /Não recite saldo/);
+  assert.match(system, /Não ofereça opção/);
+
+  const user = chatUserPrompt({
+    names,
+    speaker: "Caio",
+    partner: "Gi",
+    text: "que horas você dorme?",
+  });
+  assert.doesNotMatch(user, /195/);
+  assert.match(user, /Quem escreveu: Caio/);
+  assert.match(user, /Não cite minutos/);
+  assert.match(user, /que horas você dorme/);
 });
 
 test("a resposta da Together vira o texto do comando", async () => {
@@ -71,7 +101,14 @@ test("dado e moeda sorteiam o jogo e geram o pedido", async () => {
     /^Dado: 1\nconduz o beijo$/,
   );
   assert.match(
-    await composePlay("moeda", names, { apiKey: "k", model: "m", fetchImpl, rng: () => 0.9 }),
-    /^Coroa\.\nconduz o beijo$/,
+    await composePlay("moeda", names, {
+      apiKey: "k",
+      model: "m",
+      fetchImpl,
+      rng: () => 0.9,
+      cara: "lucas",
+      heat: 2,
+    }),
+    /^Coroa\. Gi conduz\.\nconduz o beijo$/,
   );
 });

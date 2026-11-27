@@ -46,7 +46,7 @@ export async function runDailyReminder(deps: {
     return "skipped";
   }
 
-  const chatId = deps.config.reminderChatId ?? (await deps.store.getReminderChat());
+  const chatId = destinationChat(deps.config) ?? (await deps.store.getReminderChat());
   if (chatId === null) return "no-chat";
 
   const sessions = await deps.store.listSessions();
@@ -67,6 +67,11 @@ export async function runDailyReminder(deps: {
   await deps.send(chatId, text);
   await deps.store.setLastReminderDate(today);
   return "sent";
+}
+
+function destinationChat(config: Config): number | null {
+  if (!config.groupsEnabled) return config.allowedUserIds[0] ?? null;
+  return config.reminderChatId;
 }
 
 async function dailyLine(

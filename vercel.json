@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "api/telegram.ts": {
+      "maxDuration": 30,
+      "includeFiles": "sql/**"
+    },
+    "api/cron.ts": {
+      "maxDuration": 30,
+      "includeFiles": "sql/**"
+    }
+  },
+  "crons": [
+    { "path": "/api/cron", "schedule": "0 16 * * *" },
+    { "path": "/api/cron", "schedule": "0 17 * * *" }
+  ]
+}

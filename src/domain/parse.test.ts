@@ -37,6 +37,9 @@ test("texto solto só conta se for escada", () => {
   assert.equal(parseStairs("30 esteira", false).type, "rejected");
   assert.equal(parseStairs("30 de bike", false).type, "rejected");
   assert.equal(parseStairs("40", false).type, "ignore");
+  assert.deepEqual(parseStairs("+35", false), { type: "stairs", minutes: 35, note: null });
+  assert.deepEqual(parseStairs("+1h", false), { type: "stairs", minutes: 60, note: null });
+  assert.equal(parseStairs("+30 esteira", false).type, "rejected");
   assert.equal(parseStairs("escada", false).type, "need-minutes");
   assert.equal(parseStairs("bora escada amanha", false).type, "ignore");
   assert.equal(parseStairs("19:40 escada 30", false).type, "ambiguous");
@@ -59,8 +62,14 @@ test("resgate pede o prêmio e os minutos", () => {
 test("coleta aceita tudo, uma parte, ou o prêmio assumido", () => {
   assert.deepEqual(parseCollect(""), { ok: false, reason: "menu" });
   assert.deepEqual(parseCollect("massagem"), { ok: true, kind: "massagem", minutes: "all" });
-  assert.deepEqual(parseCollect("boquete 2"), { ok: true, kind: "boquete", minutes: 2 });
+  assert.deepEqual(parseCollect("mamadinha 2"), { ok: true, kind: "boquete", minutes: 2 });
   assert.deepEqual(parseCollect("", "massagem"), { ok: true, kind: "massagem", minutes: "all" });
   assert.deepEqual(parseCollect("5", "massagem"), { ok: true, kind: "massagem", minutes: 5 });
+  assert.deepEqual(parseCollect("massagem 2 ciclos"), {
+    ok: true,
+    kind: "massagem",
+    minutes: 10,
+  });
+  assert.deepEqual(parseCollect("2 ciclos", "boquete"), { ok: true, kind: "boquete", minutes: 4 });
   assert.equal(parseCollect("0", "boquete").ok, false);
 });

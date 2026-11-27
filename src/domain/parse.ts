@@ -1,5 +1,5 @@
 import { sessionError } from "./ledger.js";
-import { MAX_SESSION_MINUTES, type RewardKind } from "./rules.js";
+import { MAX_SESSION_MINUTES, REWARD_PER_CYCLE, type RewardKind } from "./rules.js";
 
 const REJECTED =
   /\b(esteira|bike|bicicleta|corrida|correr|caminhada|eliptic[oa]|elíptic[oa]|remo|natacao|natação|hiit|spinning)\b/i;
@@ -20,6 +20,9 @@ type DurationHit =
 export function parseStairs(raw: string, fromCommand: boolean): StairsParse {
   const text = raw.trim();
   if (!text) return fromCommand ? { type: "need-minutes" } : { type: "ignore" };
+
+  const plus = text.match(/^\+\s*(.*)$/);
+  if (plus) return parseStairs(plus[1] ?? "", true);
 
   const hasStairs = /\bescadas?\b/i.test(text);
   const hasRejected = REJECTED.test(text);
@@ -57,7 +60,7 @@ export type RedeemParse =
   | { ok: false; reason: "usage" | "invalid" | "too-long" };
 
 export function parseRedeem(raw: string): RedeemParse {
-  const match = raw
+  const match = canonPrize(raw)
     .trim()
     .toLowerCase()
     .match(/^(massagem|boquete)\s+(\d+)\s*$/);
@@ -76,27 +79,33 @@ export type CollectParse =
   | { ok: false; reason: "menu" | "usage" | "invalid" | "too-long" };
 
 export function parseCollect(raw: string, assumed?: RewardKind): CollectParse {
-  const text = raw.trim().toLowerCase();
+  const text = canonPrize(raw).trim().toLowerCase();
   if (!text) {
     return assumed
       ? { ok: true, kind: assumed, minutes: "all" }
       : { ok: false, reason: "menu" };
   }
 
-  const withKind = text.match(/^(massagem|boquete)(?:\s+(tudo|\d+))?$/);
-  if (withKind) {
-    const kind = withKind[1] as RewardKind;
-    const amount = withKind[2];
-    if (!amount || amount === "tudo") return { ok: true, kind, minutes: "all" };
-    return amountOrError(kind, Number(amount));
-  }
-
-  if (assumed) {
-    if (text === "tudo") return { ok: true, kind: assumed, minutes: "all" };
-    if (/^\d+$/.test(text)) return amountOrError(assumed, Number(text));
-  }
+  const withKind = text.match(/^(massagem|boquete)(?:\s+(.+))?$/);
+  if (withKind) return amountFromTail(withKind[1] as RewardKind, withKind[2]);
+  if (assumed) return amountFromTail(assumed, text);
 
   return { ok: false, reason: "usage" };
+}
+
+function amountFromTail(kind: RewardKind, tail: string | undefined): CollectParse {
+  if (!tail || tail === "tudo") return { ok: true, kind, minutes: "all" };
+
+  const match = tail.match(/^(\d+)(?:\s+(ciclos?|min))?$/);
+  if (!match) return { ok: false, reason: "usage" };
+
+  const count = Number(match[1]);
+  const minutes = match[2]?.startsWith("ciclo") ? count * REWARD_PER_CYCLE[kind] : count;
+  return amountOrError(kind, minutes);
+}
+
+function canonPrize(raw: string): string {
+  return raw.replace(/\bmamadinha\b/gi, "boquete");
 }
 
 function amountOrError(kind: RewardKind, minutes: number): CollectParse {

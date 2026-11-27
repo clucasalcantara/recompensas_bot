@@ -1,4 +1,5 @@
 import type { Balances } from "./domain/ledger.js";
+import type { Preference } from "./domain/prefs.js";
 import type { RewardKind } from "./domain/rules.js";
 
 export type Session = {
@@ -47,4 +48,17 @@ export type Store = {
   getReminderChat(): Promise<number | null>;
   getLastReminderDate(): Promise<string | null>;
   setLastReminderDate(date: string): Promise<void>;
+  listPreferences(): Promise<Preference[]>;
+  addPreference(input: {
+    userId: number;
+    owner: Preference["owner"];
+    about: Preference["about"];
+    kind: Preference["kind"];
+    note: string;
+    question: string | null;
+  }): Promise<{ preference: Preference; fresh: boolean }>;
+  getPendingPref(userId: number): Promise<string | null>;
+  setPendingPref(userId: number, questionId: string | null): Promise<void>;
 };
+
+export type { Preference };

@@ -55,7 +55,7 @@ export function formatRanking(
     return [
       "Ranking vazio. Ninguém lançou escada ainda.",
       "",
-      `Quem registra aparece aqui. O prêmio não muda: a cada ${CYCLE_MINUTES} min, massagem pra ${names.giName} e boquete pro ${names.lucasName}.`,
+      `Quem registra aparece aqui. O prêmio não muda: a cada ${CYCLE_MINUTES} min da própria escada, massagem pra ${names.giName} e mamadinha pro ${names.lucasName}.`,
       "",
       "Começa com /escada 20.",
     ].join("\n");

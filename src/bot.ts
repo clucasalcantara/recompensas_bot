@@ -1,12 +1,25 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import type { Config } from "./config.js";
+import { addressedToBot, speakerFor, type Speaker } from "./domain/address.js";
 import type { Balances } from "./domain/ledger.js";
 import { redeemError, undoSessionError } from "./domain/ledger.js";
 import { parseCollect, parseStairs } from "./domain/parse.js";
-import { formatGameMenu } from "./domain/play.js";
+import { formatCoinAsk, formatGameMenu, formatLevelAsk, parseHeat } from "./domain/play.js";
+import type { Heat, PlayKind } from "./domain/play.js";
 import { formatRanking, summarize } from "./domain/ranking.js";
-import type { RewardKind } from "./domain/rules.js";
-import { composePlay } from "./suggest.js";
+import { MASSAGE_PER_CYCLE, ORAL_PER_CYCLE, type RewardKind } from "./domain/rules.js";
+import {
+  answerNote,
+  formatKnown,
+  formatSaved,
+  nextQuestion,
+  preferenceBrief,
+  questionById,
+  resolveAbout,
+  type Learned,
+} from "./domain/prefs.js";
+import { helloLine, understand, type Talk } from "./domain/talk.js";
+import { composePlay, replyChat } from "./suggest.js";
 import type { Store } from "./store.js";
 import {
   formatBalance,
@@ -30,6 +43,21 @@ export function createBot(config: Config, store: Store): Bot {
     const userId = ctx.from?.id;
     if (!userId) return;
 
+    const text = ctx.msg?.text ?? ctx.msg?.caption ?? "";
+    const plus = /^\+\s*\d/.test(text.trim());
+    const inGroup = Boolean(ctx.chat && ctx.chat.type !== "private");
+
+    if (inGroup && !ctx.callbackQuery) {
+      if (!config.groupsEnabled && !plus) return;
+      const directed = addressedToBot({
+        chatType: ctx.chat?.type ?? "group",
+        text,
+        replyToBot: ctx.msg?.reply_to_message?.from?.id === ctx.me?.id,
+        mentionsBot: messageMentionsBot(ctx),
+      });
+      if (!directed) return;
+    }
+
     if (config.allowedUserIds.length === 0) {
       await ctx.reply(
         `Ainda não liberei ninguém.\nSeu Telegram id é ${userId}. Coloca ele em ALLOWED_USER_IDS no .env e reinicia.`,
@@ -37,12 +65,20 @@ export function createBot(config: Config, store: Store): Bot {
       return;
     }
 
-    if (!config.allowedUserIds.includes(userId)) {
+    const allowed = config.allowedUserIds.includes(userId);
+    const couple = userId === config.lucasUserId || userId === config.giUserId;
+    if (!allowed && !couple) {
+      if (!config.groupsEnabled || inGroup) return;
       await ctx.reply("Esse bot é só da gente.");
       return;
     }
 
-    if (ctx.chat?.id) await store.rememberChat(ctx.chat.id);
+    if (!allowed && couple && !inGroup) {
+      await ctx.reply("As perguntas ficam no grupo. Me marca lá, ou responde uma mensagem minha.");
+      return;
+    }
+
+    if (ctx.chat?.type === "private" && ctx.chat.id && allowed) await store.rememberChat(ctx.chat.id);
     await next();
   });
 
@@ -80,67 +116,62 @@ export function createBot(config: Config, store: Store): Bot {
     await collectFromText(ctx, store, config, String(ctx.match ?? ""), "massagem");
   });
 
-  bot.command("boquete", async (ctx) => {
+  bot.command(["boquete", "mamadinha"], async (ctx) => {
     await collectFromText(ctx, store, config, String(ctx.match ?? ""), "boquete");
   });
 
   bot.command("desfazer", async (ctx) => {
-    const last = await store.lastEvent();
-    if (!last) {
-      await ctx.reply(formatNothingToUndo());
-      return;
-    }
-
-    if (last.type === "session") {
-      const sessions = await store.listSessions();
-      const index = sessions.findIndex((session) => session.id === last.session.id);
-      const error = undoSessionError(sessions, await store.listRedemptions(), index);
-      if (error) {
-        await ctx.reply(formatDomainError(error));
-        return;
-      }
-      await store.deleteSession(last.session.id);
-    } else {
-      await store.deleteRedemption(last.redemption.id);
-    }
-
-    const current = await store.balances();
-    await replyWithPrizes(
-      ctx,
-      `${formatUndo(last)}\n\n${formatBalance(config, current)}`,
-      current,
-    );
+    await undoLast(ctx, store, config);
   });
 
-  for (const kind of ["dica", "verdade", "desafio", "dado", "moeda", "brincadeira"] as const) {
+  for (const kind of ["dica", "dado", "brincadeira"] as const) {
     bot.command(kind, async (ctx) => {
-      await ctx.replyWithChatAction("typing");
-      try {
-        await ctx.reply(
-          await composePlay(kind, names, {
-            apiKey: config.togetherApiKey,
-            model: config.togetherModel,
-          }),
-        );
-      } catch (error) {
-        console.error(error instanceof Error ? error.message : error);
-        await ctx.reply("Não consegui gerar agora. Manda de novo.");
-      }
+      await sendPlay(ctx, store, config, kind);
     });
   }
+
+  bot.command("verdade", async (ctx) => {
+    await beginLevel(ctx, store, config, "verdade", parseHeat(String(ctx.match ?? "")));
+  });
+
+  bot.command("desafio", async (ctx) => {
+    await beginLevel(ctx, store, config, "desafio", parseHeat(String(ctx.match ?? "")));
+  });
+
+  bot.command("moeda", async (ctx) => {
+    const intent = understand(`moeda ${String(ctx.match ?? "")}`, names);
+    if (intent.type !== "coin") return;
+    await beginCoin(ctx, store, config, intent.cara, intent.heat);
+  });
+
+  bot.command("preferencias", async (ctx) => {
+    await showKnown(ctx, store, config);
+  });
 
   bot.command("jogo", async (ctx) => {
     await ctx.reply(formatGameMenu());
   });
 
-  bot.callbackQuery(/^collect:(massagem|boquete)$/, async (ctx) => {
+  bot.callbackQuery(/^play:(verdade|desafio):([123])$/, async (ctx) => {
     await ctx.answerCallbackQuery();
-    await performCollect(ctx, store, config, ctx.match[1] as RewardKind, "all");
+    await sendPlay(ctx, store, config, ctx.match[1] as "verdade" | "desafio", Number(ctx.match[2]) as Heat);
+  });
+
+  bot.callbackQuery(/^coin:(lucas|gi)(?::([123]))?$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const heat = ctx.match[2] ? (Number(ctx.match[2]) as Heat) : undefined;
+    await beginCoin(ctx, store, config, ctx.match[1] as "lucas" | "gi", heat);
+  });
+
+  bot.callbackQuery(/^collect:(massagem|boquete)(?::(\d+))?$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const minutes = ctx.match[2] ? Number(ctx.match[2]) : "all";
+    await performCollect(ctx, store, config, ctx.match[1] as RewardKind, minutes);
   });
 
   bot.on("message:text", async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
-    await logStairs(ctx, store, config, ctx.message.text, false);
+    await talk(ctx, store, config, ctx.message.text);
   });
 
   bot.catch((error) => {
@@ -148,6 +179,216 @@ export function createBot(config: Config, store: Store): Bot {
   });
 
   return bot;
+}
+
+async function talk(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  text: string,
+): Promise<void> {
+  const names = { giName: config.giName, lucasName: config.lucasName };
+  const intent = understand(text, names);
+  if (await consumePending(ctx, store, config, text, intent)) return;
+
+  switch (intent.type) {
+    case "stairs":
+      await logStairs(ctx, store, config, text, false);
+      return;
+    case "stairs-error":
+      await ctx.reply(formatParseError(intent.error));
+      return;
+    case "balance": {
+      const current = await store.balances();
+      await replyWithPrizes(ctx, formatBalance(config, current), current);
+      return;
+    }
+    case "history":
+      await ctx.reply(formatHistory(await store.recent(10), config.reminderTimeZone));
+      return;
+    case "ranking":
+      await ctx.reply(
+        formatRanking(
+          summarize(await store.listSessions(), new Date(), config.reminderTimeZone),
+          names,
+        ),
+      );
+      return;
+    case "rules":
+      await ctx.reply(formatRules(config));
+      return;
+    case "undo":
+      await undoLast(ctx, store, config);
+      return;
+    case "games":
+      await ctx.reply(formatGameMenu());
+      return;
+    case "play":
+      if ((intent.kind === "verdade" || intent.kind === "desafio") && !intent.heat) {
+        await beginLevel(ctx, store, config, intent.kind);
+        return;
+      }
+      await sendPlay(ctx, store, config, intent.kind, intent.heat);
+      return;
+    case "coin":
+      await beginCoin(ctx, store, config, intent.cara, intent.heat);
+      return;
+    case "preference":
+      await saveLearned(ctx, store, config, intent.learned);
+      return;
+    case "calibrate":
+      await askNext(ctx, store, config);
+      return;
+    case "preferences":
+      await showKnown(ctx, store, config);
+      return;
+    case "ask-partner":
+      await askPartner(ctx, store, config);
+      return;
+    case "hello":
+      await ctx.reply(helloLine(text, currentSpeaker(ctx, config).name));
+      return;
+    case "collect":
+      await collectFromText(ctx, store, config, intent.raw);
+      return;
+    case "chat":
+      await ctx.replyWithChatAction("typing");
+      try {
+        const speaker = currentSpeaker(ctx, config);
+        await ctx.reply(
+          await replyChat({
+            apiKey: config.togetherApiKey,
+            model: config.togetherModel,
+            names,
+            text,
+            speaker: speaker.name,
+            partner: speaker.partnerName,
+            tastes: preferenceBrief(await store.listPreferences(), names),
+          }),
+        );
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : error);
+        await ctx.reply(
+          "Pode falar normal. Por exemplo: fiz 40 de escada, quanto a gente tem, coleta a massagem, me dá uma dica.",
+        );
+      }
+  }
+}
+
+async function undoLast(ctx: Context, store: Store, config: Config): Promise<void> {
+  const last = await store.lastEvent();
+  if (!last) {
+    await ctx.reply(formatNothingToUndo());
+    return;
+  }
+
+  if (last.type === "session") {
+      const sessions = (await store.listSessions()).map((session) => ({
+        minutes: session.minutes,
+        owner: session.userId === config.giUserId ? ("gi" as const) : ("lucas" as const),
+      }));
+      const index = (await store.listSessions()).findIndex((session) => session.id === last.session.id);
+    const error = undoSessionError(sessions, await store.listRedemptions(), index);
+    if (error) {
+      await ctx.reply(formatDomainError(error));
+      return;
+    }
+    await store.deleteSession(last.session.id);
+  } else {
+    await store.deleteRedemption(last.redemption.id);
+  }
+
+  const current = await store.balances();
+  await replyWithPrizes(ctx, `${formatUndo(last)}\n\n${formatBalance(config, current)}`, current);
+}
+
+async function beginLevel(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  kind: "verdade" | "desafio",
+  heat?: Heat,
+): Promise<void> {
+  if (!heat) {
+    await ctx.reply(formatLevelAsk(kind), { reply_markup: levelKeyboard(`play:${kind}`) });
+    return;
+  }
+  await sendPlay(ctx, store, config, kind, heat);
+}
+
+async function beginCoin(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  cara?: "me" | "partner" | "lucas" | "gi",
+  heat?: Heat,
+): Promise<void> {
+  const side = cara ? resolveCara(ctx, config, cara) : undefined;
+  if (!side) {
+    await ctx.reply(formatCoinAsk(config.lucasName, config.giName), {
+      reply_markup: new InlineKeyboard()
+        .text(`${config.lucasName} é cara`, "coin:lucas")
+        .text(`${config.giName} é cara`, "coin:gi"),
+    });
+    return;
+  }
+  if (!heat) {
+    const other = side === "gi" ? config.lucasName : config.giName;
+    const who = side === "gi" ? config.giName : config.lucasName;
+    await ctx.reply(`${who} é cara. ${other} é coroa.\n\n${formatLevelAsk("moeda")}`, {
+      reply_markup: levelKeyboard(`coin:${side}`),
+    });
+    return;
+  }
+  await sendPlay(ctx, store, config, "moeda", heat, side);
+}
+
+function resolveCara(
+  ctx: Context,
+  config: Config,
+  cara: "me" | "partner" | "lucas" | "gi",
+): "lucas" | "gi" {
+  const speakerIsGi = ctx.from?.id === config.giUserId;
+  if (cara === "gi") return "gi";
+  if (cara === "lucas") return "lucas";
+  if (cara === "me") return speakerIsGi ? "gi" : "lucas";
+  return speakerIsGi ? "lucas" : "gi";
+}
+
+function levelKeyboard(prefix: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("1 · leve", `${prefix}:1`)
+    .text("2 · médio", `${prefix}:2`)
+    .text("3 · quente", `${prefix}:3`);
+}
+
+async function sendPlay(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  kind: PlayKind,
+  heat?: Heat,
+  cara?: "lucas" | "gi",
+): Promise<void> {
+  await ctx.replyWithChatAction("typing");
+  const names = { giName: config.giName, lucasName: config.lucasName };
+  try {
+    await ctx.reply(
+      await composePlay(kind, names, {
+        apiKey: config.togetherApiKey,
+        model: config.togetherModel,
+        speaker: currentSpeaker(ctx, config).name,
+        heat,
+        cara,
+        tastes: preferenceBrief(await store.listPreferences(), names),
+      }),
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    await ctx.reply("Não consegui gerar agora. Manda de novo.");
+    return;
+  }
+  await maybeAsk(ctx, store, config);
 }
 
 async function collectFromText(
@@ -166,7 +407,7 @@ async function collectFromText(
     }
     await ctx.reply(
       parsed.reason === "usage"
-        ? "Usa /coletar, /massagem 5 ou /boquete 2."
+        ? "Usa /coletar, /massagem 2 ciclos ou /mamadinha 4."
         : formatDomainError(parsed.reason === "too-long" ? "minutes-too-long" : "minutes-invalid"),
     );
     return;
@@ -235,6 +476,7 @@ async function logStairs(
       config,
       minutes: parsed.minutes,
       note: parsed.note,
+      owner: ctx.from?.id === config.giUserId ? "gi" : "lucas",
       before,
       after,
     }),
@@ -255,16 +497,235 @@ function collectKeyboard(current: Balances): InlineKeyboard | undefined {
   if (current.massagem.available <= 0 && current.boquete.available <= 0) return undefined;
 
   const keyboard = new InlineKeyboard();
-  if (current.massagem.available > 0) {
-    keyboard.text(`Coletar massagem (${current.massagem.available} min)`, "collect:massagem");
-  }
+  addPrizeButtons(keyboard, "massagem", "massagem", current.massagem.available, MASSAGE_PER_CYCLE);
   if (current.massagem.available > 0 && current.boquete.available > 0) keyboard.row();
-  if (current.boquete.available > 0) {
-    keyboard.text(`Coletar boquete (${current.boquete.available} min)`, "collect:boquete");
-  }
+  addPrizeButtons(keyboard, "boquete", "mamadinha", current.boquete.available, ORAL_PER_CYCLE);
   return keyboard;
+}
+
+function addPrizeButtons(
+  keyboard: InlineKeyboard,
+  kind: RewardKind,
+  label: string,
+  available: number,
+  unit: number,
+): void {
+  if (available <= 0) return;
+  if (available > unit) {
+    keyboard.text(`${unit} min de ${label}`, `collect:${kind}:${unit}`);
+    keyboard.text(`Tudo · ${available} min`, `collect:${kind}`);
+    return;
+  }
+  keyboard.text(`Levar ${available} min de ${label}`, `collect:${kind}`);
+}
+
+async function consumePending(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  text: string,
+  intent: Talk,
+): Promise<boolean> {
+  if (isGroup(ctx) && !repliedToBot(ctx)) return false;
+  if (intent.type !== "chat" && intent.type !== "preference") return false;
+  const userId = ctx.from?.id;
+  if (!userId) return false;
+  const pendingId = await store.getPendingPref(userId);
+  if (!pendingId) return false;
+  await answerPending(
+    ctx,
+    store,
+    config,
+    text,
+    pendingId,
+    intent.type === "preference" ? intent.learned : null,
+  );
+  return true;
+}
+
+async function answerPending(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  text: string,
+  pendingId: string,
+  learned: Learned | null,
+): Promise<void> {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  const speaker = currentSpeaker(ctx, config);
+  const question = questionById(pendingId, speaker.name);
+  if (!question) {
+    await store.setPendingPref(userId, null);
+    return;
+  }
+  const owner = speakerOwner(ctx, config);
+  if (learned && (learned.kind !== question.kind || resolveAbout(learned.about, owner) !== owner)) {
+    await saveLearned(ctx, store, config, learned);
+    await ctx.reply(question.text);
+    return;
+  }
+  const note = learned?.note ?? answerNote(text);
+  if (!note) {
+    await ctx.reply(`Me fala em uma frase.\n${question.text}`);
+    return;
+  }
+  const { fresh } = await store.addPreference({
+    userId,
+    owner,
+    about: owner,
+    kind: question.kind,
+    note,
+    question: question.id,
+  });
+  await store.setPendingPref(userId, null);
+  const saved = formatSaved({
+    aboutName: speaker.name,
+    self: true,
+    kind: question.kind,
+    note,
+    fresh,
+  });
+  const next = nextQuestion(await store.listPreferences(), userId, speaker.name);
+  if (!next) {
+    await ctx.reply(saved);
+    return;
+  }
+  await store.setPendingPref(userId, next.id);
+  await ctx.reply(`${saved}\n\n${next.text}`);
+}
+
+async function saveLearned(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  learned: Learned,
+): Promise<void> {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  const owner = speakerOwner(ctx, config);
+  const about = resolveAbout(learned.about, owner);
+  const aboutName = about === "couple" ? "Vocês" : about === "gi" ? config.giName : config.lucasName;
+  const { fresh } = await store.addPreference({
+    userId,
+    owner,
+    about,
+    kind: learned.kind,
+    note: learned.note,
+    question: null,
+  });
+  await ctx.reply(
+    formatSaved({
+      aboutName,
+      self: about === owner,
+      kind: learned.kind,
+      note: learned.note,
+      fresh,
+    }),
+  );
+}
+
+async function askNext(ctx: Context, store: Store, config: Config): Promise<void> {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  const speaker = currentSpeaker(ctx, config);
+  const names = { giName: config.giName, lucasName: config.lucasName };
+  const question = nextQuestion(await store.listPreferences(), userId, speaker.name);
+  if (!question) {
+    await ctx.reply(formatKnown(await store.listPreferences(), names));
+    return;
+  }
+  await store.setPendingPref(userId, question.id);
+  const replyHint = isGroup(ctx) ? "\n\nResponde esta mensagem." : "";
+  await ctx.reply(`${question.text}${replyHint}`);
+}
+
+async function showKnown(ctx: Context, store: Store, config: Config): Promise<void> {
+  await ctx.reply(
+    formatKnown(await store.listPreferences(), { giName: config.giName, lucasName: config.lucasName }),
+  );
+}
+
+async function askPartner(ctx: Context, store: Store, config: Config): Promise<void> {
+  const speaker = currentSpeaker(ctx, config);
+  const speakerIsGi = ctx.from?.id === config.giUserId;
+  const partnerId = speakerIsGi ? config.lucasUserId : config.giUserId;
+  if (!partnerId) {
+    await ctx.reply(`Ainda não tenho o id de ${speaker.partnerName}.`);
+    return;
+  }
+  const question = nextQuestion(await store.listPreferences(), partnerId, speaker.partnerName);
+  if (!question) {
+    await ctx.reply(`${speaker.partnerName} já respondeu o que eu pergunto.`);
+    return;
+  }
+  await store.setPendingPref(partnerId, question.id);
+  const prompt = `${speaker.partnerName}, ${question.text}\n\nResponde esta mensagem. Eu guardo e uso nos jogos.`;
+  if (isGroup(ctx)) {
+    await ctx.reply(prompt);
+    return;
+  }
+  if (!config.groupChatId) {
+    await store.setPendingPref(partnerId, null);
+    await ctx.reply("Ainda não tenho o grupo. Manda a pergunta lá, me marcando.");
+    return;
+  }
+  try {
+    await ctx.api.sendMessage(config.groupChatId, prompt);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    await store.setPendingPref(partnerId, null);
+    await ctx.reply(`Não consegui falar no grupo. Confere se eu estou lá.`);
+    return;
+  }
+  await ctx.reply(`Perguntei pra ${speaker.partnerName} no grupo.`);
+}
+
+async function maybeAsk(ctx: Context, store: Store, config: Config): Promise<void> {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+  const items = await store.listPreferences();
+  if (items.some((item) => item.userId === userId)) return;
+  if (await store.getPendingPref(userId)) return;
+  await askNext(ctx, store, config);
+}
+
+function isGroup(ctx: Context): boolean {
+  return ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
+}
+
+function repliedToBot(ctx: Context): boolean {
+  return ctx.msg?.reply_to_message?.from?.id === ctx.me?.id;
+}
+
+function speakerOwner(ctx: Context, config: Config): "lucas" | "gi" {
+  return ctx.from?.id === config.giUserId ? "gi" : "lucas";
 }
 
 function actorName(ctx: Context): string {
   return ctx.from?.first_name?.trim() || "Alguém";
+}
+
+function currentSpeaker(ctx: Context, config: Config): Speaker {
+  return speakerFor({
+    userId: ctx.from?.id ?? 0,
+    firstName: ctx.from?.first_name,
+    lucasUserId: config.lucasUserId,
+    giUserId: config.giUserId,
+    lucasName: config.lucasName,
+    giName: config.giName,
+  });
+}
+
+function messageMentionsBot(ctx: Context): boolean {
+  const username = ctx.me?.username?.toLowerCase();
+  const text = ctx.msg?.text ?? ctx.msg?.caption ?? "";
+  for (const entity of ctx.msg?.entities ?? ctx.msg?.caption_entities ?? []) {
+    if (entity.type === "text_mention" && entity.user.id === ctx.me?.id) return true;
+    if (entity.type === "mention" && username) {
+      const token = text.slice(entity.offset, entity.offset + entity.length).toLowerCase();
+      if (token === `@${username}`) return true;
+    }
+  }
+  return false;
 }

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "start": "tsx src/index.ts",
+    "webhook": "tsx src/register-webhook.ts",
     "test": "tsx --test src/domain/*.test.ts src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
