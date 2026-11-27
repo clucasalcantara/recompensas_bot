@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { House, Names } from "../types";
 import { ApiError, api } from "./api";
 
@@ -20,16 +23,17 @@ export function Lock({
   const [error, setError] = useState("");
 
   return (
-    <section className="shell lock">
-      <div className="mark" aria-hidden="true">
-        <span />
-        <span />
-        <span />
+    <section className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-16">
+      <div className="mb-8 flex gap-2" aria-hidden="true">
+        <span className="h-4 w-7 rounded-t-md rounded-b-sm bg-gi" />
+        <span className="h-4 w-7 -translate-y-2 rounded-t-md rounded-b-sm bg-ring" />
+        <span className="h-4 w-7 rounded-t-md rounded-b-sm bg-caio" />
       </div>
-      <p className="eyebrow">a casa</p>
-      <h1>Só vocês dois.</h1>
-      <p className="lede">A escada, os jogos, o jantar e a história que o bot vai aprendendo.</p>
+      <p className="text-xs tracking-[0.18em] text-primary">a casa</p>
+      <h1 className="font-display mt-3 text-5xl leading-none">Só vocês dois.</h1>
+      <p className="mt-4 text-muted-foreground">A escada, os jogos, o jantar e a história que o bot vai aprendendo.</p>
       <form
+        className="mt-10 space-y-5 rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/8"
         onSubmit={(event) => {
           event.preventDefault();
           if (!person) {
@@ -52,23 +56,26 @@ export function Lock({
           });
         }}
       >
-        <p className="label">Quem entra?</p>
-        <div className="who">
-          {[names.lucasName, names.giName].map((name) => (
-            <button
-              key={name}
-              type="button"
-              className={person === name ? "on" : undefined}
-              aria-pressed={person === name}
-              onClick={() => setPerson(name)}
-            >
-              {name}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Quem entra?</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[names.lucasName, names.giName].map((name) => (
+              <Button
+                key={name}
+                type="button"
+                variant={person === name ? "default" : "outline"}
+                aria-pressed={person === name}
+                onClick={() => setPerson(name)}
+              >
+                {name}
+              </Button>
+            ))}
+          </div>
         </div>
-        <label className="field">
-          <span>Senha</span>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor="password">Senha</Label>
+          <Input
+            id="password"
             type="password"
             name="password"
             autoComplete="current-password"
@@ -76,11 +83,11 @@ export function Lock({
             required
             onChange={(event) => setPassword(event.target.value)}
           />
-        </label>
-        <button className="primary" type="submit" disabled={busy}>
+        </div>
+        <Button type="submit" className="w-full" disabled={busy}>
           Entrar
-        </button>
-        <p className="error" role="alert">
+        </Button>
+        <p className="min-h-5 text-sm text-destructive" role="alert">
           {error}
         </p>
       </form>

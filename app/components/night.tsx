@@ -1,15 +1,17 @@
 "use client";
 
+import { Heart, Map, Moon, Utensils } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { Ticket } from "../types";
 import { api } from "./api";
 import { TicketCard } from "./play";
 
 const ideas = [
-  ["jantar", "Jantar"],
-  ["noite", "Hoje à noite"],
-  ["programa", "Um programa"],
-  ["fofo", "Uma fofura"],
+  ["jantar", "Jantar", "Mesa, vela, sem pressa.", Utensils],
+  ["noite", "Hoje à noite", "Quando a casa fecha.", Moon],
+  ["programa", "Um programa", "Sair, ou ficar.", Map],
+  ["fofo", "Uma fofura", "Pequeno e perto.", Heart],
 ] as const;
 
 export function NightView({
@@ -20,17 +22,26 @@ export function NightView({
   run: (fn: () => Promise<void>) => Promise<boolean>;
 }) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [kind, setKind] = useState("");
 
   return (
-    <section>
-      <p className="lede">Coisa de noite, jantar e um pouco de fofura. Sem pressa.</p>
-      <div className="games night">
-        {ideas.map(([id, label]) => (
-          <button
+    <section className="space-y-8">
+      <header className="space-y-2">
+        <p className="text-xs tracking-[0.16em] text-primary uppercase">Noite</p>
+        <h1 className="font-display text-4xl leading-none">Uma ideia.</h1>
+        <p className="max-w-sm text-muted-foreground">Jantar, programa ou uma fofura. Sem pressa.</p>
+      </header>
+      <TicketCard ticket={ticket} kind={kind} />
+      <div className="grid grid-cols-1 gap-3">
+        {ideas.map(([id, label, hint, Icon]) => (
+          <Button
             key={id}
             type="button"
+            variant={kind === id ? "default" : "outline"}
+            className="h-auto items-start justify-start gap-3 px-4 py-4 text-left"
             disabled={busy}
-            onClick={() =>
+            onClick={() => {
+              setKind(id);
               void run(async () => {
                 setTicket({ title: "Pensando", text: "Um segundo." });
                 try {
@@ -39,14 +50,17 @@ export function NightView({
                   setTicket(null);
                   throw error;
                 }
-              })
-            }
+              });
+            }}
           >
-            {label}
-          </button>
+            <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="flex flex-col items-start gap-0.5">
+              <span>{label}</span>
+              <span className={kind === id ? "text-primary-foreground/80" : "text-muted-foreground"}>{hint}</span>
+            </span>
+          </Button>
         ))}
       </div>
-      {ticket ? <TicketCard ticket={ticket} /> : null}
     </section>
   );
 }
