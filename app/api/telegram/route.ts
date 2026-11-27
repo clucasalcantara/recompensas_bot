@@ -12,5 +12,5 @@ export async function POST(req: Request): Promise<Response> {
   const secret = process.env.WEBHOOK_SECRET?.trim();
   if (!secret) return new Response("sem segredo", { status: 500 });
   const { bot } = await getApp();
-  return webhookCallback(bot, "std/http", { secretToken: secret })(req);
+  return webhookCallback(bot, "std/http", { secretToken: secret, timeoutMilliseconds: 28_000 })(req);
 }
