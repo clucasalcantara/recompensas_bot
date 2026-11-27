@@ -1,6 +1,7 @@
 import { balances, type Owner } from "./domain/ledger.js";
 import { decodeScene, encodeScene } from "./domain/scene.js";
 import type { Preference } from "./domain/prefs.js";
+import type { Story } from "./domain/story.js";
 import type { ChatLine, LedgerEvent, Redemption, Session, Store } from "./store.js";
 
 export function createMemoryStore(people: { giUserId?: number | null } = {}): Store {
@@ -8,6 +9,7 @@ export function createMemoryStore(people: { giUserId?: number | null } = {}): St
   const sessions: Session[] = [];
   const redemptions: Redemption[] = [];
   const preferences: Preference[] = [];
+  const stories: Story[] = [];
   const messages: { chatId: number; name: string; role: "user" | "bot"; text: string }[] = [];
   const meta = new Map<string, string>();
   let nextId = 1;
@@ -111,6 +113,33 @@ export function createMemoryStore(people: { giUserId?: number | null } = {}): St
       preferences.push(preference);
       return { preference, fresh: true };
     },
+    async deletePreference(id) {
+      const index = preferences.findIndex((item) => item.id === id);
+      if (index >= 0) preferences.splice(index, 1);
+    },
+    async listStories() {
+      return [...stories].sort((a, b) => a.id - b.id);
+    },
+    async addStory(input) {
+      const existing = stories.find(
+        (item) =>
+          item.owner === input.owner &&
+          item.topic === input.topic &&
+          item.note.toLowerCase() === input.note.toLowerCase(),
+      );
+      if (existing) return { story: existing, fresh: false };
+      const story: Story = {
+        id: nextId++,
+        createdAt: new Date().toISOString(),
+        ...input,
+      };
+      stories.push(story);
+      return { story, fresh: true };
+    },
+    async deleteStory(id) {
+      const index = stories.findIndex((item) => item.id === id);
+      if (index >= 0) stories.splice(index, 1);
+    },
     async getPendingPref(userId) {
       return meta.get(`pref_ask:${userId}`) ?? null;
     },
@@ -140,6 +169,16 @@ export function createMemoryStore(people: { giUserId?: number | null } = {}): St
       if (!raw) meta.delete(`scene:${chatId}`);
       else meta.set(`scene:${chatId}`, raw);
     },
+    async claimUpdate(updateId) {
+      const key = `upd:${updateId}`;
+      if (meta.has(key)) return false;
+      meta.set(key, "1");
+      return true;
+    },
+    async searchContent() {
+      return [];
+    },
+    async close() {},
   };
 }
 

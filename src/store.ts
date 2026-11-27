@@ -2,6 +2,7 @@ import type { Balances } from "./domain/ledger.js";
 import type { Scene } from "./domain/scene.js";
 import type { Preference } from "./domain/prefs.js";
 import type { RewardKind } from "./domain/rules.js";
+import type { Story } from "./domain/story.js";
 
 export type Session = {
   id: number;
@@ -64,6 +65,15 @@ export type Store = {
     note: string;
     question: string | null;
   }): Promise<{ preference: Preference; fresh: boolean }>;
+  deletePreference(id: number): Promise<void>;
+  listStories(): Promise<Story[]>;
+  addStory(input: {
+    userId: number;
+    owner: Story["owner"];
+    topic: Story["topic"];
+    note: string;
+  }): Promise<{ story: Story; fresh: boolean }>;
+  deleteStory(id: number): Promise<void>;
   getPendingPref(userId: number): Promise<string | null>;
   setPendingPref(userId: number, questionId: string | null): Promise<void>;
   addMessage(input: {
@@ -76,6 +86,23 @@ export type Store = {
   recentMessages(chatId: number, limit: number): Promise<ChatLine[]>;
   getScene(chatId: number): Promise<Scene | null>;
   setScene(chatId: number, scene: Scene | null): Promise<void>;
+  claimUpdate(updateId: number): Promise<boolean>;
+  searchContent(input: {
+    level: 1 | 2 | 3;
+    kind?: string | null;
+    embedding: number[];
+    limit?: number;
+  }): Promise<ContentHit[]>;
+  close(): Promise<void>;
+};
+
+export type ContentHit = {
+  id: string;
+  direction: string;
+  intensityLevel: 1 | 2 | 3;
+  sexualContent: "none" | "suggestive" | "sensual" | "explicit";
+  interactionType: string;
+  distance: number;
 };
 
 export type { Preference };

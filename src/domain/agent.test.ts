@@ -23,7 +23,7 @@ test("oi no grupo, sem marcação, não responde", () => {
     speakerName: "Caio",
     addressed: false,
     scene: null,
-    choice: choice({ action: "hello" }),
+    choice: choice({ action: "hello", say: "Oi, Caio." }),
   });
   assert.equal(plan.reply, "quiet");
   assert.equal(plan.text, null);
@@ -312,6 +312,25 @@ test("o lembrete de Vancouver continua às 16h", () => {
     }),
     true,
   );
+});
+
+test("decisão vazia não pede pra repetir e o mesmo update entra uma vez", async () => {
+  const plan = planTurn({
+    text: "tudo bem por aí?",
+    place: "private",
+    speaker: "lucas",
+    speakerName: "Caio",
+    addressed: true,
+    scene: null,
+    choice: null,
+  });
+  assert.equal(plan.reply, "model");
+  assert.equal(plan.text, null);
+
+  const store = createMemoryStore();
+  assert.equal(await store.claimUpdate(10), true);
+  assert.equal(await store.claimUpdate(10), false);
+  assert.equal(await store.claimUpdate(11), true);
 });
 
 test("a cena gravada volta inteira e o papo recente não leva o arquivo todo", async () => {

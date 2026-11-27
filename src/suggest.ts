@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { Balances } from "./domain/ledger.js";
-import { directionFor } from "./domain/library.js";
 import type { CoupleNames, Heat, PlayKind } from "./domain/play.js";
 import { parseAgent, reasonSystemPrompt, reasonUserPrompt, type AgentChoice } from "./domain/reason.js";
 import { phraseSystem, phraseUser } from "./domain/phrase.js";
@@ -201,7 +200,8 @@ export async function decideIntent(input: {
     user: reasonUserPrompt(input),
     fetchImpl: input.fetchImpl,
     temperature: 0,
-    maxTokens: 400,
+    maxTokens: 700,
+    reasoningEffort: "low",
     json: true,
   });
   return parseAgent(raw);
@@ -232,6 +232,7 @@ async function complete(input: {
   fetchImpl?: typeof fetch;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   json?: boolean;
 }): Promise<string> {
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -245,6 +246,7 @@ async function complete(input: {
       model: input.model,
       temperature: input.temperature ?? 1,
       max_tokens: input.maxTokens ?? 800,
+      ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
       ...(input.json ? { response_format: { type: "json_object" } } : {}),
       messages: [
         { role: "system", content: input.system },
@@ -273,13 +275,14 @@ export async function composePlay(
     heat?: Heat;
     cara?: "lucas" | "gi";
     tastes?: string;
+    guide?: string | null;
   },
 ): Promise<string> {
   const rng = client.rng ?? Math.random;
   const tone = client.heat ? toneForHeat(client.heat) : rollTone(rng);
   const speaker = client.speaker;
   const heat = client.heat;
-  const guide = directionFor(heat ?? 2, kind);
+  const guide = client.guide ?? null;
 
   if (kind === "dado") {
     const face = 1 + Math.floor(rng() * 6);

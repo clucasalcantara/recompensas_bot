@@ -115,7 +115,7 @@ test("cada ação do modelo vira uma decisão executável", () => {
     ['{"action":"calibrate"}', { action: "calibrate" }],
     ['{"action":"preferences"}', { action: "preferences" }],
     ['{"action":"ask-partner"}', { action: "ask-partner" }],
-    ['{"action":"hello"}', { action: "hello" }],
+    ['{"action":"hello","say":"Oi."}', { action: "hello", say: "Oi." }],
     ['{"action":"stop"}', { action: "stop" }],
     ['{"action":"play","kind":"verdade"}', { action: "play", kind: "verdade" }],
     ['{"action":"play","kind":"verdade","heat":"3"}', { action: "play", kind: "verdade", heat: 3 }],
@@ -185,15 +185,17 @@ test("JSON sujo, ação inventada e recusa de conta não passam", () => {
   assert.equal(parseDecision("null"), null);
   assert.equal(parseDecision(""), null);
   assert.equal(parseDecision("sem json"), null);
-  assert.equal(parseDecision('ok {"action":"hello"} e também {"action":"stop"}'), null);
+  assert.equal(parseDecision('ok {"action":"hello","say":"Oi."} e também {"action":"stop"}'), null);
 
   assert.deepEqual(
     parseDecision('```json\n{"action":"stop"}\n```'),
     { action: "stop" },
   );
-  assert.deepEqual(parseDecision('Pensando na conta.\n{"action":"hello"}\nPronto.'), {
+  assert.deepEqual(parseDecision('Pensando na conta.\n{"action":"hello","say":"Oi."}\nPronto.'), {
     action: "hello",
+    say: "Oi.",
   });
+  assert.equal(parseDecision('{"action":"hello"}'), null);
   assert.deepEqual(parseDecision('{"action":"rules","extra":"ignora"}'), { action: "rules" });
 });
 

@@ -6,7 +6,8 @@ import { balances, type Owner } from "./domain/ledger.js";
 import { decodeScene, encodeScene } from "./domain/scene.js";
 import type { RewardKind } from "./domain/rules.js";
 import type { Preference } from "./domain/prefs.js";
-import type { LedgerEvent, Redemption, Session, Store } from "./store.js";
+import { isStoryTopic, type Story } from "./domain/story.js";
+import type { ContentHit, LedgerEvent, Redemption, Session, Store } from "./store.js";
 
 type SessionRow = {
   id: number | string;
@@ -191,6 +192,44 @@ function bind(pool: Pool, people: { giUserId: number | null }): Store {
       if (!row) throw new Error("Não gravou a preferência.");
       return { preference: toPreference(row), fresh: true };
     },
+    async deletePreference(id) {
+      await pool.query(`DELETE FROM preferences WHERE id = $1`, [id]);
+    },
+    async listStories() {
+      const result = await pool.query<StoryRow>(
+        `SELECT id, user_id, owner, topic, note, created_at
+         FROM stories ORDER BY id ASC`,
+      );
+      return result.rows.flatMap((row) => {
+        const story = toStory(row);
+        return story ? [story] : [];
+      });
+    },
+    async addStory(input) {
+      const existing = await pool.query<StoryRow>(
+        `SELECT id, user_id, owner, topic, note, created_at
+         FROM stories
+         WHERE owner = $1 AND topic = $2 AND lower(note) = lower($3)
+         LIMIT 1`,
+        [input.owner, input.topic, input.note],
+      );
+      const found = existing.rows[0];
+      const already = found ? toStory(found) : null;
+      if (already) return { story: already, fresh: false };
+      const result = await pool.query<StoryRow>(
+        `INSERT INTO stories (user_id, owner, topic, note)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, user_id, owner, topic, note, created_at`,
+        [input.userId, input.owner, input.topic, input.note],
+      );
+      const row = result.rows[0];
+      const story = row ? toStory(row) : null;
+      if (!story) throw new Error("Não gravou a nota.");
+      return { story, fresh: true };
+    },
+    async deleteStory(id) {
+      await pool.query(`DELETE FROM stories WHERE id = $1`, [id]);
+    },
     async getPendingPref(userId) {
       return getMeta(pool, `pref_ask:${userId}`);
     },
@@ -235,6 +274,39 @@ function bind(pool: Pool, people: { giUserId: number | null }): Store {
       }
       await setMeta(pool, key, raw);
     },
+    async searchContent(input) {
+      const limit = input.limit ?? 3;
+      const withKind = await searchCards(pool, input.level, input.kind ?? null, input.embedding, limit);
+      if (withKind.length > 0 || !input.kind) return withKind;
+      return searchCards(pool, input.level, null, input.embedding, limit);
+    },
+    async close() {
+      await pool.end();
+    },
+    async claimUpdate(updateId) {
+      const key = `upd:${updateId}`;
+      const result = await pool.query(
+        `INSERT INTO meta (key, value) VALUES ($1, '1')
+         ON CONFLICT (key) DO NOTHING
+         RETURNING key`,
+        [key],
+      );
+      const claimed = (result.rowCount ?? 0) > 0;
+      if (claimed && updateId % 40 === 0) {
+        try {
+          await pool.query(
+            `DELETE FROM meta
+             WHERE key LIKE 'upd:%'
+               AND substring(key from 5) ~ '^[0-9]+$'
+               AND substring(key from 5)::bigint < $1`,
+            [Math.max(0, updateId - 200)],
+          );
+        } catch (error) {
+          console.error(error instanceof Error ? error.message : error);
+        }
+      }
+      return claimed;
+    },
   };
 }
 
@@ -278,6 +350,27 @@ function toRedemption(row: RedemptionRow): Redemption {
   return { ...toSession(row), kind: row.kind };
 }
 
+type StoryRow = {
+  id: number | string;
+  user_id: number | string;
+  owner: Story["owner"];
+  topic: string;
+  note: string;
+  created_at: Date | string;
+};
+
+function toStory(row: StoryRow): Story | null {
+  if (!isStoryTopic(row.topic)) return null;
+  return {
+    id: Number(row.id),
+    userId: Number(row.user_id),
+    owner: row.owner,
+    topic: row.topic,
+    note: row.note,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
 function toPreference(row: PreferenceRow): Preference {
   return {
     id: Number(row.id),
@@ -292,4 +385,118 @@ function toPreference(row: PreferenceRow): Preference {
 
 function eventId(event: LedgerEvent): number {
   return event.type === "session" ? event.session.id : event.redemption.id;
+}
+
+const CONTENT_FILTER = `
+  content_status IN ('approved', 'active')
+  AND intensity_level = $1
+  AND (
+    ($1 = 1 AND sexual_content = 'none')
+    OR ($1 = 2 AND sexual_content <> 'explicit')
+    OR ($1 = 3 AND sexual_content = 'explicit')
+  )
+  AND ($2::text IS NULL OR interaction_type = $2)
+`;
+
+type ContentRow = {
+  id: string;
+  direction: string;
+  intensity_level: number;
+  sexual_content: ContentHit["sexualContent"];
+  interaction_type: string;
+  distance: number | string;
+};
+
+async function searchCards(
+  pool: Pool,
+  level: 1 | 2 | 3,
+  kind: string | null,
+  embedding: number[],
+  limit: number,
+): Promise<ContentHit[]> {
+  const result = await pool.query<ContentRow>(
+    `SELECT id, direction, intensity_level, sexual_content, interaction_type,
+            embedding <=> $3::vector AS distance
+     FROM content_cards
+     WHERE ${CONTENT_FILTER}
+     ORDER BY embedding <=> $3::vector
+     LIMIT $4`,
+    [level, kind, vectorLiteral(embedding), limit],
+  );
+  return result.rows.flatMap((row) => {
+    if (row.intensity_level !== 1 && row.intensity_level !== 2 && row.intensity_level !== 3) return [];
+    return [
+      {
+        id: row.id,
+        direction: row.direction,
+        intensityLevel: row.intensity_level,
+        sexualContent: row.sexual_content,
+        interactionType: row.interaction_type,
+        distance: Number(row.distance),
+      },
+    ];
+  });
+}
+
+export type ContentCardWrite = {
+  id: string;
+  direction: string;
+  intensityLevel: number;
+  emotionalDepth: string;
+  sexualContent: string;
+  interactionType: string;
+  romanticIntensity: string;
+  requiresMutual: boolean;
+  sourceReference: string;
+  sourceUrl: string | null;
+  origin: string;
+  embedding: number[];
+};
+
+export async function upsertContentCards(databaseUrl: string, cards: ContentCardWrite[]): Promise<number> {
+  const pool = new Pool({ connectionString: forPg(databaseUrl), max: 1 });
+  try {
+    for (const card of cards) {
+      await pool.query(
+        `INSERT INTO content_cards (
+           id, direction, intensity_level, emotional_depth, sexual_content, interaction_type,
+           romantic_intensity, requires_mutual, source_reference, source_url, content_status, origin, embedding
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12::vector)
+         ON CONFLICT (id) DO UPDATE SET
+           direction = EXCLUDED.direction,
+           intensity_level = EXCLUDED.intensity_level,
+           emotional_depth = EXCLUDED.emotional_depth,
+           sexual_content = EXCLUDED.sexual_content,
+           interaction_type = EXCLUDED.interaction_type,
+           romantic_intensity = EXCLUDED.romantic_intensity,
+           requires_mutual = EXCLUDED.requires_mutual,
+           source_reference = EXCLUDED.source_reference,
+           source_url = EXCLUDED.source_url,
+           content_status = 'active',
+           origin = EXCLUDED.origin,
+           embedding = EXCLUDED.embedding`,
+        [
+          card.id,
+          card.direction,
+          card.intensityLevel,
+          card.emotionalDepth,
+          card.sexualContent,
+          card.interactionType,
+          card.romanticIntensity,
+          card.requiresMutual,
+          card.sourceReference,
+          card.sourceUrl,
+          card.origin,
+          vectorLiteral(card.embedding),
+        ],
+      );
+    }
+    return cards.length;
+  } finally {
+    await pool.end();
+  }
+}
+
+function vectorLiteral(embedding: number[]): string {
+  return `[${embedding.map((value) => Number(value).toFixed(8)).join(",")}]`;
 }

@@ -179,7 +179,8 @@ test("a decisão vai com a conta real e temperatura zero", async () => {
   assert.equal(calls[0]!.authorization, "Bearer secret");
   assert.equal(calls[0]!.body.model, "modelo");
   assert.equal(calls[0]!.body.temperature, 0);
-  assert.equal(calls[0]!.body.max_tokens, 400);
+  assert.equal(calls[0]!.body.max_tokens, 700);
+  assert.equal(calls[0]!.body.reasoning_effort, "low");
   assert.deepEqual(calls[0]!.body.response_format, { type: "json_object" });
   const messages = calls[0]!.body.messages as { role: string; content: string }[];
   const system = messages.find((message) => message.role === "system")?.content ?? "";

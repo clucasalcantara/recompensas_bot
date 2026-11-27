@@ -104,7 +104,7 @@ export function planTurn(input: {
   }
 
   if (!input.choice) {
-    return { ...base, reply: "model", text: "Repete pra mim." };
+    return { ...base, reply: "model", text: null };
   }
 
   const decision = input.choice.decision;
@@ -128,7 +128,7 @@ export function planTurn(input: {
     return {
       ...base,
       reply: "hello",
-      text: hello(input.text, input.speakerName),
+      text: decision.say,
       scene,
       decision,
       recipient,
@@ -193,17 +193,6 @@ function recipientFor(choice: AgentChoice): Recipient {
   }
   if (decision.action === "balance") return decision.scope === "both" ? "both" : "speaker";
   return choice.recipient;
-}
-
-function hello(raw: string, name: string): string {
-  const text = raw
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase();
-  if (text.startsWith("bom dia")) return `Bom dia, ${name}.`;
-  if (text.startsWith("boa tarde")) return `Boa tarde, ${name}.`;
-  if (text.startsWith("boa noite")) return `Boa noite, ${name}.`;
-  return `Oi, ${name}.`;
 }
 
 function pressures(text: string): boolean {

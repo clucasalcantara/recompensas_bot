@@ -20,7 +20,7 @@ export type Decision =
   | { action: "calibrate" }
   | { action: "preferences" }
   | { action: "ask-partner" }
-  | { action: "hello" }
+  | { action: "hello"; say: string }
   | { action: "stop" }
   | { action: "chat"; say: string };
 
@@ -34,7 +34,9 @@ export function reasonSystemPrompt(): string {
     "Devolve só um JSON, sem texto em volta.",
     "Você não escreve saldo, minuto nem prêmio. Se a pergunta é sobre a conta, a ação é balance e o código responde com os números de verdade.",
     "Nunca diga que não consegue acessar a conta. A conta está no pedido.",
-    "Uma saudação sozinha é hello. Saudação com pergunta de conta é balance.",
+    "hello quando a pessoa só cumprimenta, sem pergunta. say é a sua resposta, uma frase, para quem falou.",
+    "Se tiver pergunta, mesmo curta, a ação é chat e say responde a pergunta.",
+    "Saudação com pergunta de conta é balance.",
     "Só escada entra na conta. Esteira, bike e corrida não são escada: a ação é chat e say é exatamente «Só vale escada.»",
     "Verdade ou desafio sem nível fica no 2.",
     "O nível é intensidade sexual, não profundidade emocional. Conversa funda não sobe o nível.",
@@ -51,7 +53,8 @@ export function reasonSystemPrompt(): string {
     "Exemplos:",
     '{"action":"balance","scope":"both"} para «Como que estão os saldos?»',
     '{"action":"balance","scope":"me"} para «Quantos minutos eu tenho?»',
-    '{"action":"hello"} para «Oi».',
+    '{"action":"hello","say":"Oi."} para um cumprimento sozinho.',
+    '{"action":"chat","say":"Tudo, e por aí?"} para «tudo bem por aí?».',
     '{"action":"stairs","minutes":35,"note":null} para «subi 35».',
     '{"action":"chat","say":"Só vale escada."} para «30 de bike».',
     '{"action":"stop"} para «para».',
@@ -150,7 +153,8 @@ function decisionFrom(body: Record<string, unknown>): Decision | null {
   if (action === "games" || action === "calibrate" || action === "preferences" || action === "ask-partner") {
     return { action };
   }
-  if (action === "hello" || action === "stop") return { action };
+  if (action === "stop") return { action };
+  if (action === "hello") return helloOf(body);
   if (action === "play") return playOf(body);
   if (action === "coin") return coinOf(body);
   if (action === "collect") return collectOf(body);
@@ -248,10 +252,22 @@ function preferenceOf(body: Record<string, unknown>): Decision | null {
   return { action: "preference", about, kind, note };
 }
 
+function helloOf(body: Record<string, unknown>): Decision | null {
+  const say = spoken(body.say);
+  if (!say) return null;
+  return { action: "hello", say };
+}
+
 function chatOf(body: Record<string, unknown>): Decision | null {
-  const say = noteOf(body.say);
-  if (!say || REFUSAL.test(say)) return null;
+  const say = spoken(body.say);
+  if (!say) return null;
   return { action: "chat", say };
+}
+
+function spoken(value: unknown): string | null {
+  const say = noteOf(value);
+  if (!say || REFUSAL.test(say)) return null;
+  return say;
 }
 
 function scopeOf(value: unknown): "me" | "both" {

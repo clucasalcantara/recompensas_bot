@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS stories (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  owner TEXT NOT NULL CHECK (owner IN ('lucas', 'gi')),
+  topic TEXT NOT NULL,
+  note TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

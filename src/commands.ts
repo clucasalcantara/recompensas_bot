@@ -9,6 +9,7 @@ export const BOT_COMMANDS = [
   { command: "dica", description: "Uma dica de intimidade" },
   { command: "brincadeira", description: "Uma brincadeira pra vocês" },
   { command: "jogo", description: "Ver os joguinhos" },
+  { command: "casa", description: "Abrir a casa de vocês" },
   { command: "preferencias", description: "Ver o que eu anotei" },
   { command: "moeda", description: "Sortear quem conduz" },
   { command: "dado", description: "Rolar o dado" },

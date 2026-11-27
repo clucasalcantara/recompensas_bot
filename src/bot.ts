@@ -10,17 +10,17 @@ import { formatRanking, summarize } from "./domain/ranking.js";
 import { MASSAGE_PER_CYCLE, ORAL_PER_CYCLE, type RewardKind } from "./domain/rules.js";
 import {
   answerNote,
-  formatKnown,
   nextQuestion,
-  preferenceBrief,
   questionById,
   resolveAbout,
   type Learned,
 } from "./domain/prefs.js";
+import { coupleBrief, knownHouse } from "./domain/story.js";
+import { houseUrl } from "./web/url.js";
 import { stairWrite, type Decision } from "./domain/reason.js";
 import { isExplicitStop, planTurn } from "./domain/scene.js";
-import { helloLine } from "./domain/talk.js";
-import { composePlay, decideIntent, phraseAccount } from "./suggest.js";
+import { composePlay, decideIntent, phraseAccount, replyChat } from "./suggest.js";
+import { retrieveGuide } from "./rag.js";
 import { acceptClimate } from "./domain/phrase.js";
 import type { Store } from "./store.js";
 import {
@@ -43,6 +43,8 @@ export function createBot(config: Config, store: Store): Bot {
   const names = { giName: config.giName, lucasName: config.lucasName };
 
   bot.use(async (ctx, next) => {
+    if (!(await store.claimUpdate(ctx.update.update_id))) return;
+
     const userId = ctx.from?.id;
     if (!userId) return;
 
@@ -182,6 +184,15 @@ export function createBot(config: Config, store: Store): Bot {
     await ctx.reply(formatGameMenu());
   });
 
+  bot.command("casa", async (ctx) => {
+    const url = houseUrl(process.env.WEBHOOK_URL);
+    await ctx.reply(
+      url
+        ? `A casa de vocês, com a escada, os jogos e o que vocês forem contando.\n${url}`
+        : "Ainda não tenho o endereço da casa.",
+    );
+  });
+
   bot.callbackQuery(/^play:(verdade|desafio):([123])$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     await sendPlay(ctx, store, config, ctx.match[1] as "verdade" | "desafio", Number(ctx.match[2]) as Heat);
@@ -248,11 +259,11 @@ async function talk(
       text,
       recent,
       scene,
-      tastes: preferenceBrief(await store.listPreferences(), names),
+      tastes: await houseTastes(store, names),
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
-    await ctx.reply("Repete pra mim.");
+    await sayChat(ctx, config, text);
     return;
   }
 
@@ -279,7 +290,11 @@ async function talk(
   if (plan.reply === "quiet") return;
   if (plan.reply === "stop" || plan.reply === "hello" || plan.reply === "model") {
     const line = [plan.text, plan.invite].filter((part) => part && part.length > 0).join("\n");
-    if (line) await ctx.reply(line);
+    if (line) {
+      await ctx.reply(line);
+      return;
+    }
+    if (plan.reply === "model") await sayChat(ctx, config, text);
     return;
   }
 
@@ -342,7 +357,7 @@ async function talk(
       await askPartner(ctx, store, config);
       return;
     case "hello":
-      await ctx.reply(helloLine(text, speaker.name));
+      if (decision.say) await ctx.reply(decision.say);
       return;
     case "stop":
       await ctx.reply("Parou.");
@@ -357,6 +372,31 @@ async function talk(
     case "chat":
       if (decision.say) await ctx.reply(decision.say);
   }
+}
+
+async function sayChat(ctx: Context, config: Config, text: string): Promise<void> {
+  const speaker = currentSpeaker(ctx, config);
+  try {
+    const line = (
+      await replyChat({
+        apiKey: config.togetherApiKey,
+        model: config.togetherModel,
+        names: { giName: config.giName, lucasName: config.lucasName },
+        text,
+        speaker: speaker.name,
+        partner: speaker.partnerName,
+      })
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+    if (line) {
+      await ctx.reply(line);
+      return;
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+  }
+  await ctx.reply(`Tô aqui, ${speaker.name}.`);
 }
 
 async function undoLast(
@@ -457,6 +497,13 @@ async function sendPlay(
 ): Promise<void> {
   await ctx.replyWithChatAction("typing");
   const names = { giName: config.giName, lucasName: config.lucasName };
+  const asked = ctx.message?.text?.trim() || kind;
+  let guide: string | null = null;
+  try {
+    guide = await retrieveGuide(store, { kind, level: heat ?? 2, query: asked });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+  }
   try {
     await ctx.reply(
       await composePlay(kind, names, {
@@ -465,7 +512,8 @@ async function sendPlay(
         speaker: currentSpeaker(ctx, config).name,
         heat,
         cara,
-        tastes: preferenceBrief(await store.listPreferences(), names),
+        tastes: await houseTastes(store, names),
+        guide,
       }),
     );
   } catch (error) {
@@ -737,7 +785,7 @@ async function askNext(ctx: Context, store: Store, config: Config): Promise<void
   const names = { giName: config.giName, lucasName: config.lucasName };
   const question = nextQuestion(await store.listPreferences(), userId, speaker.name);
   if (!question) {
-    await ctx.reply(formatKnown(await store.listPreferences(), names));
+    await ctx.reply(await houseKnown(store, names));
     return;
   }
   await store.setPendingPref(userId, question.id);
@@ -745,9 +793,25 @@ async function askNext(ctx: Context, store: Store, config: Config): Promise<void
   await ctx.reply(`${question.text}${replyHint}`);
 }
 
+async function houseTastes(
+  store: Store,
+  names: { giName: string; lucasName: string },
+): Promise<string> {
+  const [prefs, stories] = await Promise.all([store.listPreferences(), store.listStories()]);
+  return coupleBrief(prefs, stories, names);
+}
+
+async function houseKnown(
+  store: Store,
+  names: { giName: string; lucasName: string },
+): Promise<string> {
+  const [prefs, stories] = await Promise.all([store.listPreferences(), store.listStories()]);
+  return knownHouse(prefs, stories, names);
+}
+
 async function showKnown(ctx: Context, store: Store, config: Config): Promise<void> {
   await ctx.reply(
-    formatKnown(await store.listPreferences(), { giName: config.giName, lucasName: config.lucasName }),
+    await houseKnown(store, { giName: config.giName, lucasName: config.lucasName }),
   );
 }
 

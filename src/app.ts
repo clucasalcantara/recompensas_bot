@@ -12,15 +12,26 @@ export type App = {
 };
 
 let starting: Promise<App> | null = null;
+let dataStarting: Promise<{ config: Config; store: Store }> | null = null;
+
+export function getData(): Promise<{ config: Config; store: Store }> {
+  dataStarting ??= openData();
+  return dataStarting;
+}
 
 export function getApp(): Promise<App> {
   starting ??= startApp();
   return starting;
 }
 
-async function startApp(): Promise<App> {
+async function openData(): Promise<{ config: Config; store: Store }> {
   const config = loadConfig();
   const store = await openStore(config.databaseUrl, { giUserId: config.giUserId });
+  return { config, store };
+}
+
+async function startApp(): Promise<App> {
+  const { config, store } = await getData();
   const bot = createBot(config, store);
   await bot.api.setMyCommands([...BOT_COMMANDS]);
   await bot.init();
