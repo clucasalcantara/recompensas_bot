@@ -17,7 +17,7 @@ import {
 } from "./domain/prefs.js";
 import { coupleBrief, knownHouse } from "./domain/story.js";
 import { houseUrl } from "./web/url.js";
-import { stairWrite, type Decision } from "./domain/reason.js";
+import { accountQuestion, stairWrite, type AgentChoice, type Decision } from "./domain/reason.js";
 import { isExplicitStop, planTurn } from "./domain/scene.js";
 import { composePlay, decideIntent, phraseAccount, replyChat } from "./suggest.js";
 import { acceptClimate } from "./domain/phrase.js";
@@ -245,25 +245,36 @@ async function talk(
     ? (await store.recentMessages(chatId, 12)).map((line) => `${line.name}: ${line.text}`)
     : [];
 
-  let choice: Awaited<ReturnType<typeof decideIntent>> = null;
-  try {
-    choice = await decideIntent({
-      apiKey: config.togetherApiKey,
-      model: config.togetherModel,
-      speaker: speaker.name,
-      partner: speaker.partnerName,
-      lucasName: config.lucasName,
-      giName: config.giName,
-      balances: await store.balances(),
-      text,
-      recent,
-      scene,
-      tastes: await houseTastes(store, names),
-    });
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    await sayChat(ctx, config, text);
-    return;
+  const asked = accountQuestion(text);
+  let choice: Awaited<ReturnType<typeof decideIntent>> = asked
+    ? ({
+        decision: { action: "balance", scope: asked },
+        respond: true,
+        recipient: "both",
+        invite: null,
+        sceneMove: "end",
+      } satisfies AgentChoice)
+    : null;
+  if (!asked) {
+    try {
+      choice = await decideIntent({
+        apiKey: config.togetherApiKey,
+        model: config.togetherModel,
+        speaker: speaker.name,
+        partner: speaker.partnerName,
+        lucasName: config.lucasName,
+        giName: config.giName,
+        balances: await store.balances(),
+        text,
+        recent,
+        scene,
+        tastes: await houseTastes(store, names),
+      });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      await sayChat(ctx, config, text);
+      return;
+    }
   }
 
   const plan = planTurn({

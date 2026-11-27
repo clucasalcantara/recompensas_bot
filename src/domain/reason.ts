@@ -50,7 +50,7 @@ export function reasonSystemPrompt(): string {
     "Preferência nova não vira sugestão nesta fala. Não diga que anotou.",
     "scene é open, continue, end, stop ou none.",
     "Exemplos:",
-    '{"action":"balance","scope":"both"} para «Como que estão os saldos?»',
+    '{"action":"balance","scope":"both"} para «Como que estão os saldos?» e para «como tá o placar?».',
     '{"action":"balance","scope":"me"} para «Quantos minutos eu tenho?»',
     '{"action":"hello","say":"Oi."} para um cumprimento sozinho.',
     '{"action":"chat","say":"Tudo, e por aí?"} para «tudo bem por aí?».',
@@ -72,8 +72,8 @@ export function accountFacts(input: {
   return [
     `Quem falou: ${input.speaker}. A outra pessoa é ${input.partner}.`,
     "Conta real. Use para decidir. Não copie número nenhum na fala.",
-    `${input.lucasName}: ${lucas.totalMinutes} min de escada, ${lucas.cycles} ciclos, ${lucas.bankMinutes} no banco, ${input.balances.lucas.reward.available} min de prêmio dele.`,
-    `${input.giName}: ${gi.totalMinutes} min de escada, ${gi.cycles} ciclos, ${gi.bankMinutes} no banco, ${input.balances.gi.reward.available} min de prêmio dela.`,
+    `${input.lucasName}: ${lucas.totalMinutes} min de escada, ${lucas.cycles} ciclos, ${lucas.bankMinutes} no banco, ${Math.max(0, input.balances.lucas.reward.available)} min de prêmio dele.`,
+    `${input.giName}: ${gi.totalMinutes} min de escada, ${gi.cycles} ciclos, ${gi.bankMinutes} no banco, ${Math.max(0, input.balances.gi.reward.available)} min de prêmio dela.`,
   ].join("\n");
 }
 
@@ -131,6 +131,18 @@ export function parseAgent(raw: string): AgentChoice | null {
     invite: inviteOf(body.invite),
     sceneMove: sceneMoveOf(body.scene, decision),
   };
+}
+
+export function accountQuestion(text: string): "me" | "both" | null {
+  const folded = text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  if (!/\bplacar\b|\bsaldo\b|\bpremio\b|\bbanco\b|quantos minutos/.test(folded)) return null;
+  const mine = /\b(meu|minha|eu)\b/.test(folded);
+  const ours = /\bplacar\b|\bnosso\b|\bda gi\b|\bdela\b|\bdele\b|\bos dois\b|\ba gente\b/.test(folded);
+  if (mine && !ours) return "me";
+  return "both";
 }
 
 export function parseDecision(raw: string): Decision | null {

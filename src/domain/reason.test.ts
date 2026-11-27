@@ -3,6 +3,7 @@ import test from "node:test";
 import { balances } from "./ledger.js";
 import {
   accountFacts,
+  accountQuestion,
   parseDecision,
   reasonSystemPrompt,
   reasonUserPrompt,
@@ -37,6 +38,12 @@ test("a conta real entra na decisão e o modelo não escreve os números", () =>
   assert.match(user, /Caio: 75 min/);
   assert.match(user, /Não copie número nenhum/);
   assert.match(accountFacts({ speaker: "Caio", partner: "Gi", ...names, balances: books }), /2 min de prêmio dele/);
+});
+
+test("placar pergunta a conta dos dois e não deixa o modelo inventar", () => {
+  assert.equal(accountQuestion("com ta o placar?"), "both");
+  assert.equal(accountQuestion("quantos minutos eu tenho"), "me");
+  assert.equal(accountQuestion("subi 40"), null);
 });
 
 test("saldo no plural e os minutos de quem falou viram a conta", () => {

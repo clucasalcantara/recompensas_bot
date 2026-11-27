@@ -236,16 +236,18 @@ export function formatOwnBalance(
 
 function formatPerson(name: string, side: Side, prize: string, perCycle: number): string {
   const open = openAccount(side, perCycle);
-  if (open.totalMinutes === 0 && side.reward.available === 0) {
-    return `${name}\nZerada. ${prize}: 0 min.`;
-  }
   const collected = perCycle > 0 ? Math.floor(side.reward.spent / perCycle) : 0;
+  const collectedLine =
+    collected === 0 ? "" : collected === 1 ? "\n1 recompensa já coletada." : `\n${collected} recompensas já coletadas.`;
+  if (open.totalMinutes === 0 && side.reward.available <= 0) {
+    return `${name}\nZerada. ${prize}: 0 min.${collectedLine}`;
+  }
   const lines = [
     name,
     `${open.totalMinutes} min · ${open.bankMinutes} min no banco`,
-    `${prize}: ${side.reward.available} min`,
+    `${prize}: ${Math.max(0, side.reward.available)} min`,
   ];
-  if (collected > 0) lines.push(collected === 1 ? "1 recompensa já coletada." : `${collected} recompensas já coletadas.`);
+  if (collectedLine) lines.push(collectedLine.trim());
   const next = minutesToNext(open);
   if (next) lines.push(next);
   return lines.join("\n");
