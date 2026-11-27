@@ -20,7 +20,8 @@ import {
 import { stairWrite, type Decision } from "./domain/reason.js";
 import { isExplicitStop, planTurn } from "./domain/scene.js";
 import { helloLine } from "./domain/talk.js";
-import { composePlay, decideIntent } from "./suggest.js";
+import { composePlay, decideIntent, phraseAccount } from "./suggest.js";
+import { acceptClimate } from "./domain/phrase.js";
 import type { Store } from "./store.js";
 import {
   formatBalance,
@@ -229,6 +230,7 @@ async function talk(
 
   await ctx.replyWithChatAction("typing");
   const scene = chatId ? await store.getScene(chatId) : null;
+  const sceneWasOpen = scene !== null;
   const recent = chatId
     ? (await store.recentMessages(chatId, 12)).map((line) => `${line.name}: ${line.text}`)
     : [];
@@ -292,14 +294,14 @@ async function talk(
         await ctx.reply(formatParseError(write.error));
         return;
       }
-      await commitStairs(ctx, store, config, write.minutes, write.note);
+      await commitStairs(ctx, store, config, write.minutes, write.note, sceneWasOpen);
       return;
     }
     case "balance": {
       const current = await store.balances();
       const line =
         decision.scope === "me" ? formatOwnBalance(config, owner, current) : formatBalance(config, current);
-      await replyWithPrizes(ctx, line, current);
+      await sayAccount(ctx, config, line, sceneWasOpen, current);
       return;
     }
     case "history":
@@ -317,7 +319,7 @@ async function talk(
       await ctx.reply(formatRules(config));
       return;
     case "undo":
-      await undoLast(ctx, store, config);
+      await undoLast(ctx, store, config, sceneWasOpen);
       return;
     case "games":
       await ctx.reply(formatGameMenu());
@@ -350,14 +352,19 @@ async function talk(
         await collectFromText(ctx, store, config, "");
         return;
       }
-      await performCollect(ctx, store, config, decision.kind, decision.minutes ?? "all");
+      await performCollect(ctx, store, config, decision.kind, decision.minutes ?? "all", sceneWasOpen);
       return;
     case "chat":
       if (decision.say) await ctx.reply(decision.say);
   }
 }
 
-async function undoLast(ctx: Context, store: Store, config: Config): Promise<void> {
+async function undoLast(
+  ctx: Context,
+  store: Store,
+  config: Config,
+  sceneWasOpen = false,
+): Promise<void> {
   const last = await store.lastEvent();
   if (!last) {
     await ctx.reply(formatNothingToUndo());
@@ -381,7 +388,7 @@ async function undoLast(ctx: Context, store: Store, config: Config): Promise<voi
   }
 
   const current = await store.balances();
-  await replyWithPrizes(ctx, `${formatUndo(last)}\n\n${formatBalance(config, current)}`, current);
+  await sayAccount(ctx, config, `${formatUndo(last)}\n\n${formatBalance(config, current)}`, sceneWasOpen, current);
 }
 
 async function beginLevel(
@@ -499,6 +506,7 @@ async function performCollect(
   config: Config,
   kind: RewardKind,
   minutes: number | "all",
+  sceneWasOpen = false,
 ): Promise<void> {
   const current = await store.balances();
   const available = current[kind].available;
@@ -522,7 +530,7 @@ async function performCollect(
     userId: ctx.from?.id ?? 0,
   });
   const after = await store.balances();
-  await replyWithPrizes(ctx, formatRedeem(kind, amount, after), after);
+  await sayAccount(ctx, config, formatRedeem(kind, amount, after), sceneWasOpen, after);
 }
 
 async function logStairs(
@@ -548,6 +556,7 @@ async function commitStairs(
   config: Config,
   minutes: number,
   note: string | null,
+  sceneWasOpen = false,
 ): Promise<void> {
   const before = await store.balances();
   await store.addSession({
@@ -557,8 +566,9 @@ async function commitStairs(
     userId: ctx.from?.id ?? 0,
   });
   const after = await store.balances();
-  await replyWithPrizes(
+  await sayAccount(
     ctx,
+    config,
     formatLog({
       config,
       minutes,
@@ -567,8 +577,38 @@ async function commitStairs(
       before,
       after,
     }),
+    sceneWasOpen,
     after,
   );
+}
+
+async function sayAccount(
+  ctx: Context,
+  config: Config,
+  fallback: string,
+  sceneWasOpen: boolean,
+  current?: Balances,
+): Promise<void> {
+  let text = fallback;
+  if (sceneWasOpen) {
+    try {
+      const climate = acceptClimate(
+        await phraseAccount({
+          apiKey: config.togetherApiKey,
+          model: config.togetherModel,
+          speaker: currentSpeaker(ctx, config).name,
+        }),
+      );
+      if (climate) text = `${fallback}\n${climate}`;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+    }
+  }
+  if (current) {
+    await replyWithPrizes(ctx, text, current);
+    return;
+  }
+  await ctx.reply(text);
 }
 
 async function replyWithPrizes(ctx: Context, text: string, current: Balances): Promise<void> {

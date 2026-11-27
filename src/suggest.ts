@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Balances } from "./domain/ledger.js";
 import type { CoupleNames, Heat, PlayKind } from "./domain/play.js";
 import { parseAgent, reasonSystemPrompt, reasonUserPrompt, type AgentChoice } from "./domain/reason.js";
+import { phraseSystem, phraseUser } from "./domain/phrase.js";
 
 export type Tone = "romantico" | "sexual" | "misto";
 
@@ -195,6 +196,23 @@ export async function decideIntent(input: {
     json: true,
   });
   return parseAgent(raw);
+}
+
+export async function phraseAccount(input: {
+  apiKey: string;
+  model: string;
+  speaker: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  return complete({
+    apiKey: input.apiKey,
+    model: input.model,
+    system: phraseSystem(),
+    user: phraseUser(input),
+    fetchImpl: input.fetchImpl,
+    temperature: 0.4,
+    maxTokens: 80,
+  });
 }
 
 async function complete(input: {

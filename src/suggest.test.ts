@@ -6,6 +6,7 @@ import {
   chatUserPrompt,
   composePlay,
   decideIntent,
+  phraseAccount,
   readCompletion,
   rollTone,
   systemPrompt,
@@ -122,6 +123,29 @@ const books = balances(
   ],
   [],
 );
+
+test("o clima do segundo passe não recebe a conta", async () => {
+  let user = "";
+  let system = "";
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      temperature: number;
+      max_tokens: number;
+      messages: { role: string; content: string }[];
+    };
+    user = body.messages.find((message) => message.role === "user")?.content ?? "";
+    system = body.messages.find((message) => message.role === "system")?.content ?? "";
+    assert.equal(body.temperature, 0.4);
+    assert.equal(body.max_tokens, 80);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "Fica perto." } }] }), {
+      status: 200,
+    });
+  };
+  const text = await phraseAccount({ apiKey: "k", model: "m", speaker: "Caio", fetchImpl });
+  assert.match(system, /Nenhum número/);
+  assert.doesNotMatch(user, /\d|coletar|saldo/);
+  assert.equal(text, "Fica perto.");
+});
 
 test("a decisão vai com a conta real e temperatura zero", async () => {
   const calls: { url: string; body: Record<string, unknown>; authorization: string }[] = [];
