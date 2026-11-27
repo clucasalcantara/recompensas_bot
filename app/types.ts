@@ -9,6 +9,7 @@ export type Side = {
   minutesToNextCycle: number;
   cycles: number;
   available: number;
+  spent: number;
   perCycle: number;
 };
 
@@ -39,6 +40,20 @@ export type House = Names & {
     note: string;
   }[];
   line?: string;
+};
+
+export type Table = {
+  heat: 1 | 2 | 3;
+  kind: string;
+  phase: "idle" | "role" | "writing" | "card";
+  actor: "lucas" | "gi" | null;
+  cara: "lucas" | "gi" | null;
+  title: string;
+  text: string;
+  offline: boolean;
+  you: "lucas" | "gi";
+  writer: "lucas" | "gi" | null;
+  partnerHere: boolean;
 };
 
 export type Ticket = {

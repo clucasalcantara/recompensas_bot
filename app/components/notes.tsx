@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { House } from "../types";
 import { api } from "./api";
 
@@ -111,33 +112,41 @@ export function NotesView({
                 });
               }}
             >
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Sobre</Label>
-                  <Select value={about} onValueChange={setAbout}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="w-(--radix-select-trigger-width)">
-                      <SelectItem value="me">Eu</SelectItem>
-                      <SelectItem value="partner">A outra pessoa</SelectItem>
-                      <SelectItem value="couple">Os dois</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>É</Label>
-                  <Select value={kind} onValueChange={setKind}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="w-(--radix-select-trigger-width)">
-                      <SelectItem value="gosta">gosta</SelectItem>
-                      <SelectItem value="evita">não quer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>De quem</Label>
+                <Select value={about} onValueChange={setAbout}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" className="w-(--radix-select-trigger-width)">
+                    <SelectItem value="me">Eu</SelectItem>
+                    <SelectItem value="partner">A outra pessoa</SelectItem>
+                    <SelectItem value="couple">Os dois</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              <ToggleGroup
+                type="single"
+                value={kind}
+                onValueChange={(value) => {
+                  if (value === "gosta" || value === "evita") setKind(value);
+                }}
+                className="grid w-full grid-cols-2"
+                aria-label="Gosta ou não quer"
+              >
+                <ToggleGroupItem
+                  value="gosta"
+                  className="h-11 w-full data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                >
+                  Gosta
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="evita"
+                  className="h-11 w-full data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                >
+                  Não quer
+                </ToggleGroupItem>
+              </ToggleGroup>
               <div className="space-y-2">
                 <Label htmlFor="pref">O quê</Label>
                 <Input

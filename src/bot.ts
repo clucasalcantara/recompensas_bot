@@ -110,7 +110,7 @@ export function createBot(config: Config, store: Store): Bot {
   });
 
   bot.command("historico", async (ctx) => {
-    await ctx.reply(formatHistory(await store.recent(10), config.reminderTimeZone));
+    await ctx.reply(formatHistory(await store.recent(10), config.reminderTimeZone, config));
   });
 
   bot.command(["ranking", "leaderboard", "rank"], async (ctx) => {
@@ -319,7 +319,7 @@ async function talk(
       return;
     }
     case "history":
-      await ctx.reply(formatHistory(await store.recent(10), config.reminderTimeZone));
+      await ctx.reply(formatHistory(await store.recent(10), config.reminderTimeZone, config));
       return;
     case "ranking":
       await ctx.reply(
@@ -574,7 +574,7 @@ async function performCollect(
   await store.addRedemption({
     kind,
     minutes: amount,
-    actorName: actorName(ctx),
+    actorName: houseName(ctx, config),
     userId: ctx.from?.id ?? 0,
   });
   const after = await store.balances();
@@ -610,7 +610,7 @@ async function commitStairs(
   await store.addSession({
     minutes,
     note,
-    actorName: actorName(ctx),
+    actorName: houseName(ctx, config),
     userId: ctx.from?.id ?? 0,
   });
   const after = await store.balances();
@@ -862,8 +862,11 @@ function speakerOwner(ctx: Context, config: Config): "lucas" | "gi" {
   return ctx.from?.id === config.giUserId ? "gi" : "lucas";
 }
 
-function actorName(ctx: Context): string {
-  return ctx.from?.first_name?.trim() || "Alguém";
+function houseName(ctx: Context, config: Config): string {
+  const id = ctx.from?.id;
+  if (id && config.giUserId !== null && id === config.giUserId) return config.giName;
+  if (id && config.lucasUserId !== null && id === config.lucasUserId) return config.lucasName;
+  return ctx.from?.first_name?.trim() || config.lucasName;
 }
 
 function currentSpeaker(ctx: Context, config: Config): Speaker {

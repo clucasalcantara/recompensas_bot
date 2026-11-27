@@ -7,7 +7,7 @@ import { decodeScene, encodeScene } from "./domain/scene.js";
 import type { RewardKind } from "./domain/rules.js";
 import type { Preference } from "./domain/prefs.js";
 import { isStoryTopic, type Story } from "./domain/story.js";
-import type { ContentHit, LedgerEvent, Redemption, Session, Store } from "./store.js";
+import { emptyMesa, type ContentHit, type LedgerEvent, type Mesa, type Redemption, type Session, type Store } from "./store.js";
 
 type SessionRow = {
   id: number | string;
@@ -283,6 +283,41 @@ function bind(pool: Pool, people: { giUserId: number | null }): Store {
     async close() {
       await pool.end();
     },
+    async updateMesa(change) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const current = await readMesa(client);
+        change(current);
+        await client.query(
+          `UPDATE mesa SET
+             heat = $1, kind = $2, phase = $3, actor = $4, cara = $5,
+             title = $6, line = $7, offline = $8, lucas_seen = $9, gi_seen = $10,
+             turn = $11, updated_at = now()
+           WHERE id = 1`,
+          [
+            current.heat,
+            current.kind,
+            current.phase,
+            current.actor,
+            current.cara,
+            current.title,
+            current.line,
+            current.offline,
+            current.lucasSeen,
+            current.giSeen,
+            current.turn,
+          ],
+        );
+        await client.query("COMMIT");
+        return { ...current };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async claimUpdate(updateId) {
       const key = `upd:${updateId}`;
       const result = await pool.query(
@@ -406,6 +441,50 @@ type ContentRow = {
   interaction_type: string;
   distance: number | string;
 };
+
+type MesaRow = {
+  heat: number;
+  kind: string | null;
+  phase: string;
+  actor: string | null;
+  cara: string | null;
+  turn: string | null;
+  title: string | null;
+  line: string | null;
+  offline: boolean;
+  lucas_seen: number | string | null;
+  gi_seen: number | string | null;
+};
+
+async function readMesa(client: Pick<Pool, "query">): Promise<Mesa> {
+  await client.query(`INSERT INTO mesa (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
+  const result = await client.query<MesaRow>(
+    `SELECT heat, kind, phase, actor, cara, title, line, offline, lucas_seen, gi_seen, turn
+     FROM mesa WHERE id = 1 FOR UPDATE`,
+  );
+  const row = result.rows[0];
+  if (!row) return emptyMesa();
+  const phase = row.phase === "role" || row.phase === "writing" || row.phase === "card" ? row.phase : "idle";
+  return {
+    heat: row.heat === 2 || row.heat === 3 ? row.heat : 1,
+    kind: row.kind,
+    phase,
+    actor: row.actor === "lucas" || row.actor === "gi" ? row.actor : null,
+    cara: row.cara === "lucas" || row.cara === "gi" ? row.cara : null,
+    turn: row.turn === "lucas" || row.turn === "gi" ? row.turn : null,
+    title: row.title,
+    line: row.line,
+    offline: row.offline,
+    lucasSeen: seenOf(row.lucas_seen),
+    giSeen: seenOf(row.gi_seen),
+  };
+}
+
+function seenOf(value: number | string | null): number | null {
+  if (value === null) return null;
+  const seen = Number(value);
+  return Number.isFinite(seen) ? seen : null;
+}
 
 async function searchCards(
   pool: Pool,

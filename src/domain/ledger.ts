@@ -37,6 +37,21 @@ export type DomainError =
   | "not-enough"
   | "undo-would-overdraw";
 
+export function openAccount(side: Side, perCycle: number): Side {
+  const closed = perCycle > 0 ? Math.floor(side.reward.spent / perCycle) : 0;
+  const totalMinutes = Math.max(0, side.totalMinutes - closed * CYCLE_MINUTES);
+  const cycles = Math.floor(totalMinutes / CYCLE_MINUTES);
+  const bankMinutes = totalMinutes % CYCLE_MINUTES;
+
+  return {
+    totalMinutes,
+    cycles,
+    bankMinutes,
+    minutesToNextCycle: CYCLE_MINUTES - bankMinutes,
+    reward: side.reward,
+  };
+}
+
 export function sessionError(minutes: number): DomainError | null {
   if (!Number.isInteger(minutes) || minutes <= 0) return "minutes-invalid";
   if (minutes > MAX_SESSION_MINUTES) return "minutes-too-long";

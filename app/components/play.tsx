@@ -2,11 +2,12 @@
 
 import { CircleHelp, Coins, Dice5, MessageCircle, PartyPopper, Swords } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { House, Ticket } from "../types";
-import { api } from "./api";
+import type { House, Table, Ticket } from "../types";
+import { ApiError, api } from "./api";
 
 const games = [
   ["dica", "Dica", MessageCircle],
@@ -18,63 +19,104 @@ const games = [
 ] as const;
 
 type GameId = (typeof games)[number][0];
+type Side = "lucas" | "gi";
+
+const posed = new Set<GameId>(["verdade", "desafio"]);
 
 export function PlayView({
   house,
   busy,
   run,
+  onAuth,
 }: {
   house: House;
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<boolean>;
+  onAuth: () => void;
 }) {
-  const [heat, setHeat] = useState<1 | 2 | 3>(1);
-  const [cara, setCara] = useState<"lucas" | "gi">("lucas");
-  const [kind, setKind] = useState<GameId | "">("");
-  const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [awaitingCoin, setAwaitingCoin] = useState(false);
+  const [table, setTable] = useState<Table | null>(null);
+  const [draft, setDraft] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const hold = useRef(false);
+  const onAuthRef = useRef(onAuth);
+  onAuthRef.current = onAuth;
 
-  function draw(id: GameId) {
-    setKind(id);
-    void run(async () => {
-      setTicket({ title: "Pensando", text: "Um segundo." });
+  useEffect(() => {
+    let stop = false;
+    async function pull() {
+      if (hold.current) return;
       try {
-        setTicket(
-          await api<Ticket>("play", {
-            kind: id,
-            heat,
-            ...(id === "moeda" ? { cara } : {}),
-          }),
-        );
-        setAwaitingCoin(false);
+        const next = await api<Table>("mesa", {});
+        if (!stop && !hold.current) setTable(next);
       } catch (error) {
-        setTicket(null);
-        throw error;
+        if (error instanceof ApiError && error.auth) onAuthRef.current();
       }
-    });
+    }
+    void pull();
+    const id = window.setInterval(() => void pull(), 2000);
+    return () => {
+      stop = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (table?.phase !== "writing") setDraft("");
+  }, [table?.phase]);
+
+  async function mutate(fn: () => Promise<Table>) {
+    hold.current = true;
+    try {
+      await run(async () => setTable(await fn()));
+    } finally {
+      hold.current = false;
+    }
   }
+
+  function nameOf(side: Side) {
+    return side === "gi" ? house.giName : house.lucasName;
+  }
+
+  const heat = table?.heat ?? 1;
+  const kind = (table?.kind || "") as GameId | "";
+  const mine = table?.writer === house.who;
+  const ticket: Ticket | null = thinking
+    ? { title: "Pensando", text: "Um segundo." }
+    : table?.phase === "card"
+      ? { title: table.title, text: table.text, offline: table.offline }
+      : table?.phase === "writing" && !mine
+        ? { title: kind === "desafio" ? "Desafio" : "Verdade", text: waiting(table, nameOf) }
+        : null;
 
   return (
     <section className="space-y-8">
       <header className="space-y-2">
         <p className="text-xs tracking-[0.16em] text-primary uppercase">Jogos</p>
         <h1 className="font-display text-4xl leading-none">Uma rodada.</h1>
-        <p className="max-w-sm text-muted-foreground">O saldo não muda. Leve é carinho, médio é clima, quente é direto.</p>
+        <p className="max-w-sm text-muted-foreground">
+          {table?.partnerHere
+            ? `${house.partner} está neste jogo.`
+            : `Abre no celular de ${house.partner} pra jogar junto.`}{" "}
+          O nível é dos dois.
+        </p>
       </header>
 
       <TicketCard ticket={ticket} kind={kind} />
 
       <div className="space-y-5 rounded-3xl bg-card p-4 shadow-sm ring-1 ring-foreground/8">
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Intensidade</p>
+          <p className="text-sm text-muted-foreground">Nível dos dois</p>
           <ToggleGroup
             type="single"
             value={String(heat)}
             onValueChange={(value) => {
-              if (value === "1" || value === "2" || value === "3") setHeat(Number(value) as 1 | 2 | 3);
+              if (value !== "1" && value !== "2" && value !== "3") return;
+              const next = Number(value) as 1 | 2 | 3;
+              setTable((current) => (current ? { ...current, heat: next } : current));
+              void mutate(() => api<Table>("heat", { heat: next }));
             }}
             className="grid w-full grid-cols-3"
-            aria-label="Nível"
+            aria-label="Nível dos dois"
           >
             <ToggleGroupItem value="1" className="h-11 w-full data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
               Leve
@@ -92,17 +134,19 @@ export function PlayView({
             <Button
               key={id}
               type="button"
-              variant={kind === id ? "default" : "outline"}
+              variant={kind === id && table?.phase !== "idle" ? "default" : "outline"}
               className="h-12 justify-start gap-2 px-4"
-              disabled={busy}
+              disabled={busy || !table}
               onClick={() => {
-                if (id === "moeda") {
-                  setKind(id);
-                  setAwaitingCoin(true);
-                  return;
-                }
-                setAwaitingCoin(false);
-                draw(id);
+                const ai = !posed.has(id) && id !== "moeda";
+                if (ai) setThinking(true);
+                void mutate(async () => {
+                  try {
+                    return await api<Table>("open", { kind: id, heat });
+                  } finally {
+                    setThinking(false);
+                  }
+                });
               }}
             >
               <Icon className="size-4" aria-hidden="true" />
@@ -110,32 +154,88 @@ export function PlayView({
             </Button>
           ))}
         </div>
-        <AnimatePresence>
-          {awaitingCoin ? (
-            <motion.div
-              className="space-y-3 border-t border-border pt-4"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-            >
-              <p className="text-sm text-muted-foreground">Quem é cara?</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Button type="button" variant={cara === "lucas" ? "default" : "outline"} onClick={() => setCara("lucas")}>
-                  {house.lucasName}
-                </Button>
-                <Button type="button" variant={cara === "gi" ? "default" : "outline"} onClick={() => setCara("gi")}>
-                  {house.giName}
-                </Button>
-              </div>
-              <Button type="button" className="w-full" disabled={busy} onClick={() => draw("moeda")}>
-                Jogar a moeda
+
+        {table?.phase === "role" && kind === "moeda" ? (
+          <div className="space-y-3 border-t border-border pt-4">
+            <p className="text-sm text-muted-foreground">Quem é cara?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant={table.cara === "lucas" ? "default" : "outline"}
+                disabled={busy}
+                onClick={() => void mutate(() => api<Table>("cara", { cara: "lucas" }))}
+              >
+                {house.lucasName}
               </Button>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+              <Button
+                type="button"
+                variant={table.cara === "gi" ? "default" : "outline"}
+                disabled={busy}
+                onClick={() => void mutate(() => api<Table>("cara", { cara: "gi" }))}
+              >
+                {house.giName}
+              </Button>
+            </div>
+            <Button
+              type="button"
+              className="w-full"
+              disabled={busy || !table.cara}
+              onClick={() => {
+                setThinking(true);
+                void mutate(async () => {
+                  try {
+                    return await api<Table>("flip", {});
+                  } finally {
+                    setThinking(false);
+                  }
+                });
+              }}
+            >
+              Jogar a moeda
+            </Button>
+          </div>
+        ) : null}
+        {table?.phase === "writing" && mine ? (
+          <form
+            className="space-y-3 border-t border-border pt-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = draft.trim();
+              if (!text) return;
+              void mutate(() => api<Table>("line", { text }));
+            }}
+          >
+            <p className="text-sm text-muted-foreground">{promptFor(table, nameOf)}</p>
+            <Textarea
+              value={draft}
+              maxLength={240}
+              placeholder={kind === "desafio" ? "O que a pessoa faz" : "A pergunta"}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <Button type="submit" disabled={busy || !draft.trim()}>
+              Mandar
+            </Button>
+          </form>
+        ) : null}
       </div>
     </section>
   );
+}
+
+function promptFor(table: Table, nameOf: (side: Side) => string) {
+  if (!table.actor) return "";
+  if (table.kind === "desafio") return `Escreve o desafio pra ${nameOf(table.actor)}.`;
+  const other = table.actor === "gi" ? "lucas" : "gi";
+  return `Escreve a pergunta pra ${nameOf(other)}.`;
+}
+
+function waiting(table: Table, nameOf: (side: Side) => string) {
+  if (!table.writer) return "Um segundo.";
+  const writer = nameOf(table.writer);
+  if (table.kind === "desafio" && table.actor) {
+    return `${writer} está escrevendo o desafio pra ${nameOf(table.actor)}.`;
+  }
+  return `${writer} está escrevendo a pergunta.`;
 }
 
 export function TicketCard({ ticket, kind }: { ticket: Ticket | null; kind?: string }) {
@@ -171,7 +271,7 @@ export function TicketCard({ ticket, kind }: { ticket: Ticket | null; kind?: str
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            O jogo aparece aqui.
+            O jogo aparece aqui, pros dois.
           </motion.div>
         )}
       </AnimatePresence>

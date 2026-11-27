@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { House, Side } from "../types";
@@ -21,24 +21,53 @@ export function HomeView({
   apply: (house: House) => void;
 }) {
   const [minutes, setMinutes] = useState("");
-  const [note, setNote] = useState("");
 
   return (
     <section className="space-y-8">
       <header className="space-y-2">
-        <p className="text-xs tracking-[0.16em] text-primary uppercase">Casa</p>
-        <h1 className="font-display text-4xl leading-none">A escada.</h1>
-        <p className="max-w-sm text-muted-foreground">O que já subiu, o que está esperando, e o lançamento de hoje.</p>
+        <h1 className="font-display text-4xl leading-none">Cada degrau conta.</h1>
+        <p className="max-w-sm text-muted-foreground">Os minutos de escada de vocês viram resgates.</p>
       </header>
       <div className="grid gap-4">
-        <Person name={house.lucasName} side="lucas" data={house.lucas} prize="mamadinha" cycle={house.cycleMinutes} />
-        <Person name={house.giName} side="gi" data={house.gi} prize="massagem" cycle={house.cycleMinutes} />
+        <Person
+          name={house.lucasName}
+          side="caio"
+          data={house.lucas}
+          cycle={house.cycleMinutes}
+          busy={busy}
+          onRedeem={(count) =>
+            run(async () => {
+              apply(
+                await api<House>("redeem", {
+                  kind: "boquete",
+                  minutes: String(count * house.lucas.perCycle),
+                }),
+              );
+            })
+          }
+        />
+        <Person
+          name={house.giName}
+          side="gi"
+          data={house.gi}
+          cycle={house.cycleMinutes}
+          busy={busy}
+          onRedeem={(count) =>
+            run(async () => {
+              apply(
+                await api<House>("redeem", {
+                  kind: "massagem",
+                  minutes: String(count * house.gi.perCycle),
+                }),
+              );
+            })
+          }
+        />
       </div>
       <StairChart house={house} />
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-2xl">Subi a escada</CardTitle>
-          <CardDescription>Entra na escada de {house.you}.</CardDescription>
+          <CardTitle className="font-display text-2xl">Registrar Cardio</CardTitle>
         </CardHeader>
         <CardContent>
           <form
@@ -46,34 +75,21 @@ export function HomeView({
             onSubmit={(event) => {
               event.preventDefault();
               void run(async () => {
-                apply(await api<House>("log", { minutes, note }));
+                apply(await api<House>("log", { minutes }));
                 setMinutes("");
-                setNote("");
               });
             }}
           >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="minutes">Minutos</Label>
-                <Input
-                  id="minutes"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  placeholder="40"
-                  value={minutes}
-                  onChange={(event) => setMinutes(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="note">Nota</Label>
-                <Input
-                  id="note"
-                  maxLength={120}
-                  placeholder="de noite, sem pressa"
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="minutes">Minutos</Label>
+              <Input
+                id="minutes"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="40"
+                value={minutes}
+                onChange={(event) => setMinutes(event.target.value)}
+              />
             </div>
             <Button type="submit" disabled={busy}>
               Lançar
@@ -83,35 +99,13 @@ export function HomeView({
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="font-display text-2xl">Prêmios</CardTitle>
-          <CardDescription>Os ciclos acumulam. Dá pra levar tudo ou só uma parte.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <Prize
-            label={`${house.giName}: massagem`}
-            available={house.gi.available}
-            kind="massagem"
-            busy={busy}
-            onRedeem={(value) => run(async () => apply(await api<House>("redeem", { kind: "massagem", minutes: value })))}
-          />
-          <Prize
-            label={`${house.lucasName}: mamadinha`}
-            available={house.lucas.available}
-            kind="boquete"
-            busy={busy}
-            onRedeem={(value) => run(async () => apply(await api<House>("redeem", { kind: "boquete", minutes: value })))}
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
           <CardTitle className="font-display text-2xl">Últimos passos</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-4">
             {house.recent.length === 0 ? <li className="text-muted-foreground">Nada lançado ainda.</li> : null}
-            {house.recent.map((event) => (
-              <li key={`${event.when}-${event.text}`} className="flex items-baseline justify-between gap-4">
+            {house.recent.map((event, index) => (
+              <li key={`${event.when}-${event.text}-${index}`} className="flex items-baseline justify-between gap-4">
                 <span>{event.text}</span>
                 <span className="shrink-0 text-sm text-muted-foreground">{event.when}</span>
               </li>
@@ -127,93 +121,108 @@ function Person({
   name,
   side,
   data,
-  prize,
   cycle,
-}: {
-  name: string;
-  side: "lucas" | "gi";
-  data: Side;
-  prize: string;
-  cycle: number;
-}) {
-  const width = data.totalMinutes === 0 ? 0 : Math.round((data.bankMinutes / cycle) * 100);
-  return (
-    <article className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/8">
-      <p className="text-sm text-muted-foreground">{name}</p>
-      <p className={`font-display mt-2 text-5xl leading-none ${side === "lucas" ? "text-caio" : "text-gi"}`}>
-        {data.totalMinutes}
-      </p>
-      <p className="mt-2 text-sm text-muted-foreground">min de escada</p>
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
-        <span
-          className={`block h-full rounded-full ${side === "lucas" ? "bg-caio" : "bg-gi"}`}
-          style={{ width: `${width}%` }}
-        />
-      </div>
-      <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-        {data.totalMinutes === 0
-          ? `Cada ${cycle} min viram ${data.perCycle} min de ${prize}.`
-          : `Faltam ${data.minutesToNextCycle} min para o próximo ciclo, que vale ${data.perCycle} min de ${prize}.`}
-      </p>
-      <p className="mt-1 text-sm">
-        {data.available > 0 ? `${data.available} min de ${prize} esperando.` : "Nada esperando agora."}
-      </p>
-    </article>
-  );
-}
-
-function Prize({
-  label,
-  available,
-  kind,
   busy,
   onRedeem,
 }: {
-  label: string;
-  available: number;
-  kind: string;
+  name: string;
+  side: "caio" | "gi";
+  data: Side;
+  cycle: number;
   busy: boolean;
-  onRedeem: (minutes: string) => Promise<boolean>;
+  onRedeem: (count: number) => Promise<boolean>;
 }) {
-  const [value, setValue] = useState("");
-  const [armed, setArmed] = useState(false);
-  const ready = available > 0;
-
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState("1");
+  const width = data.totalMinutes === 0 ? 0 : Math.round((data.bankMinutes / cycle) * 100);
+  const ready = data.perCycle > 0 ? Math.floor(data.available / data.perCycle) : 0;
+  const collected = data.perCycle > 0 ? Math.floor(data.spent / data.perCycle) : 0;
+  const fresh = data.totalMinutes === 0;
+  const left = data.bankMinutes === 0 ? cycle : data.minutesToNextCycle;
+  const asked = Number(count);
+  const askedOk = Number.isInteger(asked) && asked >= 1 && asked <= ready;
   return (
-    <form
-      className="space-y-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!armed) {
-          setArmed(true);
-          return;
-        }
-        const minutes = value || String(available);
-        void onRedeem(minutes).then((ok) => {
-          if (!ok) return;
-          setArmed(false);
-          setValue("");
-        });
-      }}
-    >
-      <p>{ready ? `${label}, ${available} min disponíveis` : `${label}, nada esperando`}</p>
-      <div className="flex gap-3">
-        <Input
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder={ready ? String(available) : "0"}
-          value={value}
-          disabled={!ready}
-          aria-label={`Minutos de ${kind}`}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setArmed(false);
-          }}
+    <article className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/8">
+      <p className="text-sm text-muted-foreground">{name}</p>
+      <p className={`font-display mt-2 text-5xl leading-none ${side === "caio" ? "text-caio" : "text-gi"}`}>
+        {data.totalMinutes}
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">min de cardio</p>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
+        <span
+          className={`block h-full rounded-full ${side === "caio" ? "bg-caio" : "bg-gi"}`}
+          style={{ width: `${width}%` }}
         />
-        <Button type="submit" className="shrink-0" disabled={!ready || busy}>
-          {armed ? "Confirmar" : "Levar"}
-        </Button>
       </div>
-    </form>
+      {fresh ? (
+        <p className="mt-4 text-sm text-muted-foreground">Ainda sem cardio.</p>
+      ) : (
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          {data.bankMinutes} min no banco.{" "}
+          {left === 1 ? "Falta 1 min pro próximo resgate." : `Faltam ${left} min pro próximo resgate.`}
+        </p>
+      )}
+      <p className="mt-1 text-sm">
+        {ready === 0 ? "Nenhum resgate disponível." : ready === 1 ? "1 resgate disponível." : `${ready} resgates disponíveis.`}
+        {collected === 0 ? "" : collected === 1 ? " 1 recompensa já coletada." : ` ${collected} recompensas já coletadas.`}
+      </p>
+      <Button
+        type="button"
+        className="mt-4"
+        disabled={ready === 0 || busy}
+        onClick={() => {
+          setCount("1");
+          setOpen(true);
+        }}
+      >
+        Resgatar agora
+      </Button>
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-foreground/30 px-5"
+          onClick={() => setOpen(false)}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`resgatar-${side}`}
+            className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-lg ring-1 ring-foreground/8"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!askedOk) return;
+              void onRedeem(asked).then((ok) => {
+                if (ok) setOpen(false);
+              });
+            }}
+          >
+            <h2 id={`resgatar-${side}`} className="font-display text-2xl">
+              Quantos resgates?
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {ready === 1 ? "Tem 1 disponível." : `Tem ${ready} disponíveis.`}
+            </p>
+            <div className="mt-4 space-y-2">
+              <Label htmlFor={`quantidade-${side}`}>Quantidade</Label>
+              <Input
+                id={`quantidade-${side}`}
+                inputMode="numeric"
+                autoComplete="off"
+                value={count}
+                onChange={(event) => setCount(event.target.value)}
+              />
+            </div>
+            <div className="mt-5 flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" className="flex-1" disabled={!askedOk || busy}>
+                Resgatar
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </article>
   );
 }

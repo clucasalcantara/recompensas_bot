@@ -1,11 +1,11 @@
 import type { Config } from "../config.js";
-import { redeemError, sessionError, type DomainError } from "../domain/ledger.js";
+import { openAccount, redeemError, sessionError, type DomainError } from "../domain/ledger.js";
 import type { Heat, PlayKind } from "../domain/play.js";
 import { resolveAbout, type PrefAbout } from "../domain/prefs.js";
 import { MASSAGE_PER_CYCLE, ORAL_PER_CYCLE, CYCLE_MINUTES, type RewardKind } from "../domain/rules.js";
 import { cleanNote, coupleBrief, isStoryTopic, topicLabel } from "../domain/story.js";
-import { formatDomainError } from "../messages.js";
-import type { Store } from "../store.js";
+import { formatDomainError, historyText } from "../messages.js";
+import { type Mesa, type Store } from "../store.js";
 import { composePlay, generateLine, type GenerateInput } from "../suggest.js";
 import { retrieveGuide } from "../rag.js";
 import {
@@ -69,6 +69,22 @@ export type WebDeps = {
 };
 
 const PLAY: PlayKind[] = ["dica", "verdade", "desafio", "dado", "moeda", "brincadeira"];
+const POSED = new Set<PlayKind>(["verdade", "desafio"]);
+const HERE_MS = 20_000;
+
+export type Table = {
+  heat: 1 | 2 | 3;
+  kind: string;
+  phase: Mesa["phase"];
+  actor: "lucas" | "gi" | null;
+  cara: "lucas" | "gi" | null;
+  title: string;
+  text: string;
+  offline: boolean;
+  you: Who;
+  writer: Who | null;
+  partnerHere: boolean;
+};
 
 const NIGHTS: Record<string, { title: string; detail: string }> = {
   jantar: {
@@ -126,6 +142,13 @@ export async function dispatch(req: WebRequest, deps: WebDeps): Promise<WebResul
 
   if (op === "home") return { status: 200, body: await snapshot(deps, who) };
   if (op === "switch") return switchWho(req, deps, who);
+  if (op === "mesa") return mesaOf(deps, who, req.now);
+  if (op === "heat") return setHeat(req, deps, who);
+  if (op === "open") return openGame(req, deps, who);
+  if (op === "cara") return chooseCara(req, deps, who);
+  if (op === "flip") return flip(req, deps, who);
+  if (op === "line") return writeLine(req, deps, who);
+  if (op === "clear") return clearMesa(deps, who, req.now);
   if (op === "play") return play(req, deps, who);
   if (op === "night") return night(req, deps, who);
   if (op === "log") return logMinutes(req, deps, who);
@@ -169,50 +192,215 @@ async function switchWho(req: WebRequest, deps: WebDeps, current: Who): Promise<
   };
 }
 
+async function mesaOf(deps: WebDeps, who: Who, now: number): Promise<WebResult> {
+  const mesa = await deps.store.updateMesa((row) => {
+    see(row, who, now);
+    if ((row.kind === "verdade" || row.kind === "desafio") && row.phase === "role") hand(row, row.kind);
+  });
+  return { status: 200, body: present(mesa, who, now) };
+}
+
+async function setHeat(req: WebRequest, deps: WebDeps, who: Who): Promise<WebResult> {
+  const heat = givenHeat(asRecord(req.body).heat);
+  if (!heat) return { status: 400, body: { error: "Escolhe o nível." } };
+  const mesa = await deps.store.updateMesa((row) => {
+    row.heat = heat;
+    see(row, who, req.now);
+  });
+  return { status: 200, body: present(mesa, who, req.now) };
+}
+
+async function openGame(req: WebRequest, deps: WebDeps, who: Who): Promise<WebResult> {
+  const body = asRecord(req.body);
+  const kind = str(body.kind);
+  if (!PLAY.includes(kind as PlayKind)) return { status: 400, body: { error: "Escolhe um jogo." } };
+  const heat = givenHeat(body.heat);
+  if (POSED.has(kind as PlayKind)) {
+    const mesa = await deps.store.updateMesa((row) => {
+      if (heat) row.heat = heat;
+      if (row.kind === kind && row.phase === "writing" && row.actor) {
+        see(row, who, req.now);
+        return;
+      }
+      hand(row, kind);
+      see(row, who, req.now);
+    });
+    return { status: 200, body: present(mesa, who, req.now) };
+  }
+  if (kind === "moeda") {
+    const mesa = await deps.store.updateMesa((row) => {
+      if (heat) row.heat = heat;
+      row.kind = kind;
+      row.phase = "role";
+      row.actor = null;
+      row.cara = null;
+      row.title = null;
+      row.line = null;
+      row.offline = false;
+      see(row, who, req.now);
+    });
+    return { status: 200, body: present(mesa, who, req.now) };
+  }
+  const ready = await deps.store.updateMesa((row) => {
+    if (heat) row.heat = heat;
+    see(row, who, req.now);
+  });
+  const card = await draw(deps, kind, ready.heat, undefined);
+  const mesa = await deps.store.updateMesa((row) => {
+    row.kind = kind;
+    row.phase = "card";
+    row.actor = null;
+    row.cara = null;
+    row.title = card.title;
+    row.line = card.text;
+    row.offline = card.offline;
+    see(row, who, req.now);
+  });
+  return { status: 200, body: present(mesa, who, req.now) };
+}
+
+async function chooseCara(req: WebRequest, deps: WebDeps, who: Who): Promise<WebResult> {
+  const cara = sideOf(asRecord(req.body).cara);
+  if (!cara) return { status: 400, body: { error: "Escolhe quem é cara." } };
+  let error = "";
+  const mesa = await deps.store.updateMesa((row) => {
+    if (row.phase !== "role" || row.kind !== "moeda") {
+      error = "Ainda não é a hora.";
+      return;
+    }
+    row.cara = cara;
+    see(row, who, req.now);
+  });
+  if (error) return { status: 400, body: { error } };
+  return { status: 200, body: present(mesa, who, req.now) };
+}
+
+async function flip(req: WebRequest, deps: WebDeps, who: Who): Promise<WebResult> {
+  const current = await deps.store.updateMesa((row) => see(row, who, req.now));
+  if (current.phase !== "role" || current.kind !== "moeda" || !current.cara) {
+    return { status: 400, body: { error: "Escolhe quem é cara." } };
+  }
+  const card = await draw(deps, "moeda", current.heat, current.cara);
+  const mesa = await deps.store.updateMesa((row) => {
+    row.phase = "card";
+    row.title = card.title;
+    row.line = card.text;
+    row.offline = card.offline;
+    see(row, who, req.now);
+  });
+  return { status: 200, body: present(mesa, who, req.now) };
+}
+
+async function writeLine(req: WebRequest, deps: WebDeps, who: Who): Promise<WebResult> {
+  const text = str(asRecord(req.body).text).trim().slice(0, 240);
+  if (!text) return { status: 400, body: { error: "Escreve alguma coisa." } };
+  const names = namesOf(deps.config);
+  let error = "";
+  const mesa = await deps.store.updateMesa((row) => {
+    see(row, who, req.now);
+    const writer = writerOf(row);
+    if (row.phase !== "writing" || !writer) {
+      error = "Ainda não é a hora.";
+      return;
+    }
+    if (writer !== who) {
+      error = "Essa parte é da outra pessoa.";
+      return;
+    }
+    const asker = row.actor === "gi" ? names.giName : names.lucasName;
+    const other = row.actor === "gi" ? names.lucasName : names.giName;
+    row.phase = "card";
+    row.title = row.kind === "desafio" ? `Desafio pra ${asker}` : `${asker} pergunta pra ${other}`;
+    row.line = text;
+    row.offline = false;
+    pass(row);
+  });
+  if (error) return { status: 400, body: { error } };
+  return { status: 200, body: present(mesa, who, req.now) };
+}
+
+async function clearMesa(deps: WebDeps, who: Who, now: number): Promise<WebResult> {
+  const mesa = await deps.store.updateMesa((row) => {
+    const heat = row.heat;
+    const lucasSeen = row.lucasSeen;
+    const giSeen = row.giSeen;
+    Object.assign(row, {
+      heat,
+      kind: null,
+      phase: "idle",
+      actor: null,
+      cara: null,
+      title: null,
+      line: null,
+      offline: false,
+      lucasSeen,
+      giSeen,
+    });
+    see(row, who, now);
+  });
+  return { status: 200, body: present(mesa, who, now) };
+}
+
 async function play(req: WebRequest, deps: WebDeps, who: Who): Promise<WebResult> {
   const body = asRecord(req.body);
   const kind = str(body.kind);
   if (!PLAY.includes(kind as PlayKind)) return { status: 400, body: { error: "Escolhe um jogo." } };
+  if (POSED.has(kind as PlayKind)) {
+    return { status: 400, body: { error: "Essa vocês escrevem um pro outro." } };
+  }
   const heat = heatOf(body.heat);
   const cara = body.cara === "gi" || body.cara === "lucas" ? body.cara : undefined;
   if (kind === "moeda" && !cara) return { status: 400, body: { error: "Escolhe quem é cara." } };
+  const card = await draw(deps, kind, heat ?? 2, cara);
+  await deps.store.updateMesa((row) => {
+    if (heat) row.heat = heat;
+    row.kind = kind;
+    row.phase = "card";
+    row.actor = null;
+    row.cara = cara ?? null;
+    row.title = card.title;
+    row.line = card.text;
+    row.offline = card.offline;
+    see(row, who, req.now);
+  });
+  return { status: 200, body: card };
+}
+
+async function draw(
+  deps: WebDeps,
+  kind: string,
+  heat: Heat | undefined,
+  cara: "lucas" | "gi" | undefined,
+): Promise<{ title: string; text: string; offline: boolean }> {
   const names = namesOf(deps.config);
   const tastes = await tastesOf(deps);
   const level = heat ?? 2;
   let guide: string | null = null;
   try {
     guide = deps.guideFor
-      ? await deps.guideFor({ kind: kind as PlayKind, level, query: str(body.detail) || kind })
-      : await retrieveGuide(deps.store, {
-          kind: kind as PlayKind,
-          level,
-          query: str(body.detail) || kind,
-        });
+      ? await deps.guideFor({ kind: kind as PlayKind, level, query: kind })
+      : await retrieveGuide(deps.store, { kind: kind as PlayKind, level, query: kind });
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
   }
+  const together = [guide, "Os dois estão vendo esta carta, cada um no seu celular. Fale com os dois."]
+    .filter((line) => line && line.length > 0)
+    .join("\n");
   try {
     const playWith = deps.play ?? composePlay;
     const raw = await playWith(kind as PlayKind, names, {
       apiKey: deps.config.togetherApiKey,
       model: deps.config.togetherModel,
-      speaker: nameOf(who, deps.config),
       heat,
       cara,
       tastes,
-      guide,
+      guide: together,
       rng: deps.rng,
     });
-    return { status: 200, body: { ...splitLine(raw), offline: false } };
+    return { ...splitLine(raw), offline: false };
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
-    return {
-      status: 200,
-      body: {
-        ...fromCaderno({ kind, names, heat, rng: deps.rng }),
-        offline: true,
-      },
-    };
+    return { ...fromCaderno({ kind, names, heat, rng: deps.rng }), offline: true };
   }
 }
 
@@ -375,16 +563,16 @@ async function snapshot(deps: WebDeps, who: Who, line?: string): Promise<Record<
         month: "short",
         hour: "2-digit",
         minute: "2-digit",
-      }).format(new Date(at));
-      if (event.type === "session") {
-        const note = event.session.note ? ` · ${event.session.note}` : "";
-        return { when, text: `${event.session.actorName} subiu ${event.session.minutes} min${note}` };
-      }
-      const prize = event.redemption.kind === "massagem" ? "massagem" : "mamadinha";
-      return {
-        when,
-        text: `${event.redemption.actorName} coletou ${event.redemption.minutes} min de ${prize}`,
+      })
+        .format(new Date(at))
+        .replace(".", "");
+      const people = {
+        lucasName: config.lucasName,
+        giName: config.giName,
+        lucasUserId: config.lucasUserId,
+        giUserId: config.giUserId,
       };
+      return { when, text: historyText(event, people) };
     }),
     stories: [...stories]
       .sort((a, b) => b.id - a.id)
@@ -411,15 +599,23 @@ async function snapshot(deps: WebDeps, who: Who, line?: string): Promise<Record<
 }
 
 function sideView(
-  side: { totalMinutes: number; bankMinutes: number; minutesToNextCycle: number; cycles: number; reward: { available: number } },
+  side: {
+    totalMinutes: number;
+    bankMinutes: number;
+    minutesToNextCycle: number;
+    cycles: number;
+    reward: { available: number; spent: number };
+  },
   perCycle: number,
 ) {
+  const open = openAccount(side, perCycle);
   return {
-    totalMinutes: side.totalMinutes,
-    bankMinutes: side.bankMinutes,
-    minutesToNextCycle: side.minutesToNextCycle,
-    cycles: side.cycles,
+    totalMinutes: open.totalMinutes,
+    bankMinutes: open.bankMinutes,
+    minutesToNextCycle: open.minutesToNextCycle,
+    cycles: open.cycles,
     available: side.reward.available,
+    spent: side.reward.spent,
     perCycle,
   };
 }
@@ -451,6 +647,13 @@ function idOf(who: Who, config: WebConfig): number | null {
   return who === "gi" ? config.giUserId : config.lucasUserId;
 }
 
+function givenHeat(value: unknown): Heat | null {
+  if (value === 1 || value === "1") return 1;
+  if (value === 2 || value === "2") return 2;
+  if (value === 3 || value === "3") return 3;
+  return null;
+}
+
 function heatOf(value: unknown): Heat {
   if (value === 2 || value === "2") return 2;
   if (value === 3 || value === "3") return 3;
@@ -460,6 +663,54 @@ function heatOf(value: unknown): Heat {
 function domainMessage(error: DomainError, kind?: RewardKind): string {
   if (error === "not-enough") return "Não tem esse prêmio suficiente.";
   return formatDomainError(error, kind);
+}
+
+function present(mesa: Mesa, who: Who, now: number): Table {
+  const otherSeen = who === "gi" ? mesa.lucasSeen : mesa.giSeen;
+  return {
+    heat: mesa.heat,
+    kind: mesa.kind ?? "",
+    phase: mesa.phase,
+    actor: mesa.actor,
+    cara: mesa.cara,
+    title: mesa.title ?? "",
+    text: mesa.line ?? "",
+    offline: mesa.offline,
+    you: who,
+    writer: writerOf(mesa),
+    partnerHere: otherSeen !== null && now - otherSeen >= 0 && now - otherSeen <= HERE_MS,
+  };
+}
+
+function writerOf(mesa: Mesa): Who | null {
+  if (mesa.phase !== "writing" || !mesa.actor) return null;
+  if (mesa.kind === "verdade") return mesa.actor;
+  if (mesa.kind === "desafio") return mesa.actor === "gi" ? "lucas" : "gi";
+  return null;
+}
+
+function hand(row: Mesa, kind: string) {
+  row.kind = kind;
+  row.actor = row.turn === "lucas" ? "lucas" : "gi";
+  row.phase = "writing";
+  row.cara = null;
+  row.title = null;
+  row.line = null;
+  row.offline = false;
+}
+
+function pass(row: Mesa) {
+  if (row.actor === "gi") row.turn = "lucas";
+  else if (row.actor === "lucas") row.turn = "gi";
+}
+
+function see(mesa: Mesa, who: Who, now: number) {
+  if (who === "gi") mesa.giSeen = now;
+  else mesa.lucasSeen = now;
+}
+
+function sideOf(value: unknown): Who | null {
+  return value === "lucas" || value === "gi" ? value : null;
 }
 
 function splitLine(raw: string): { title: string; text: string } {

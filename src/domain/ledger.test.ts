@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { balances, redeemError, undoSessionError } from "./ledger.js";
+import { balances, openAccount, redeemError, undoSessionError } from "./ledger.js";
 
 test("35 e depois 40 fecham um ciclo e deixam 15 no banco", () => {
   const result = balances(
@@ -55,6 +55,34 @@ test("cada um resgata só da própria escada", () => {
   assert.equal(result.gi.totalMinutes, 120);
   assert.equal(result.gi.bankMinutes, 0);
   assert.deepEqual(result.massagem, { earned: 10, spent: 10, available: 0 });
+});
+
+test("o saldo aberto tira os ciclos já resgatados", () => {
+  const result = balances(
+    [
+      { minutes: 75, owner: "lucas" },
+      { minutes: 60, owner: "lucas" },
+      { minutes: 120, owner: "gi" },
+    ],
+    [
+      { kind: "boquete", minutes: 2 },
+      { kind: "massagem", minutes: 10 },
+    ],
+  );
+
+  const caio = openAccount(result.lucas, 2);
+  assert.equal(result.lucas.totalMinutes, 135);
+  assert.equal(caio.totalMinutes, 75);
+  assert.equal(caio.cycles, 1);
+  assert.equal(caio.bankMinutes, 15);
+  assert.equal(result.boquete.available, 2);
+
+  const gi = openAccount(result.gi, 5);
+  assert.equal(result.gi.totalMinutes, 120);
+  assert.equal(gi.totalMinutes, 0);
+  assert.equal(gi.cycles, 0);
+  assert.equal(gi.bankMinutes, 0);
+  assert.equal(result.massagem.available, 0);
 });
 
 test("a escada do lucas não gera massagem", () => {

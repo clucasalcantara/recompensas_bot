@@ -1,4 +1,4 @@
-import type { Balances } from "./ledger.js";
+import { openAccount, type Balances } from "./ledger.js";
 import { CYCLE_MINUTES, MASSAGE_PER_CYCLE, ORAL_PER_CYCLE } from "./rules.js";
 import { zonedStamp } from "./time.js";
 
@@ -46,15 +46,17 @@ export function buildReminder(input: {
 }
 
 function bankLine(input: { giName: string; lucasName: string; current: Balances }): string {
-  return [sideBank(input.lucasName, input.current.lucas), sideBank(input.giName, input.current.gi)].join(
-    "\n",
-  );
+  return [
+    sideBank(input.lucasName, input.current.lucas, ORAL_PER_CYCLE),
+    sideBank(input.giName, input.current.gi, MASSAGE_PER_CYCLE),
+  ].join("\n");
 }
 
-function sideBank(name: string, side: Balances["lucas"]): string {
-  if (side.totalMinutes === 0) return `${name} zerada.`;
-  const left = side.bankMinutes === 0 ? CYCLE_MINUTES : side.minutesToNextCycle;
-  return `${name}: ${side.bankMinutes} min no banco. Faltam ${left} min.`;
+function sideBank(name: string, side: Balances["lucas"], perCycle: number): string {
+  const open = openAccount(side, perCycle);
+  if (open.totalMinutes === 0) return `${name} zerada.`;
+  const left = open.bankMinutes === 0 ? CYCLE_MINUTES : open.minutesToNextCycle;
+  return `${name}: ${open.bankMinutes} min no banco. Faltam ${left} min.`;
 }
 
 function streakLine(streak: number, loggedToday: boolean): string {

@@ -87,6 +87,7 @@ export type Store = {
   getScene(chatId: number): Promise<Scene | null>;
   setScene(chatId: number, scene: Scene | null): Promise<void>;
   claimUpdate(updateId: number): Promise<boolean>;
+  updateMesa(change: (mesa: Mesa) => void): Promise<Mesa>;
   searchContent(input: {
     level: 1 | 2 | 3;
     kind?: string | null;
@@ -95,6 +96,38 @@ export type Store = {
   }): Promise<ContentHit[]>;
   close(): Promise<void>;
 };
+
+export type MesaPhase = "idle" | "role" | "writing" | "card";
+
+export type Mesa = {
+  heat: 1 | 2 | 3;
+  kind: string | null;
+  phase: MesaPhase;
+  actor: "lucas" | "gi" | null;
+  cara: "lucas" | "gi" | null;
+  turn: "lucas" | "gi" | null;
+  title: string | null;
+  line: string | null;
+  offline: boolean;
+  lucasSeen: number | null;
+  giSeen: number | null;
+};
+
+export function emptyMesa(): Mesa {
+  return {
+    heat: 1,
+    kind: null,
+    phase: "idle",
+    actor: null,
+    cara: null,
+    turn: null,
+    title: null,
+    line: null,
+    offline: false,
+    lucasSeen: null,
+    giSeen: null,
+  };
+}
 
 export type ContentHit = {
   id: string;

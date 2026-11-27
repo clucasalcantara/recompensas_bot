@@ -1,9 +1,8 @@
-import type { Balances } from "./ledger.js";
-import { sessionError } from "./ledger.js";
+import { openAccount, sessionError, type Balances } from "./ledger.js";
 import { parseStairs } from "./parse.js";
 import type { Heat, PlayKind } from "./play.js";
 import type { LearnedAbout, PrefKind } from "./prefs.js";
-import type { RewardKind } from "./rules.js";
+import { MASSAGE_PER_CYCLE, ORAL_PER_CYCLE, type RewardKind } from "./rules.js";
 
 export type Decision =
   | { action: "balance"; scope: "me" | "both" }
@@ -68,8 +67,8 @@ export function accountFacts(input: {
   giName: string;
   balances: Balances;
 }): string {
-  const lucas = input.balances.lucas;
-  const gi = input.balances.gi;
+  const lucas = openAccount(input.balances.lucas, ORAL_PER_CYCLE);
+  const gi = openAccount(input.balances.gi, MASSAGE_PER_CYCLE);
   return [
     `Quem falou: ${input.speaker}. A outra pessoa é ${input.partner}.`,
     "Conta real. Use para decidir. Não copie número nenhum na fala.",

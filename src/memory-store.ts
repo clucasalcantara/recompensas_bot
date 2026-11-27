@@ -2,7 +2,7 @@ import { balances, type Owner } from "./domain/ledger.js";
 import { decodeScene, encodeScene } from "./domain/scene.js";
 import type { Preference } from "./domain/prefs.js";
 import type { Story } from "./domain/story.js";
-import type { ChatLine, LedgerEvent, Redemption, Session, Store } from "./store.js";
+import { emptyMesa, type ChatLine, type LedgerEvent, type Mesa, type Redemption, type Session, type Store } from "./store.js";
 
 export function createMemoryStore(people: { giUserId?: number | null } = {}): Store {
   const giUserId = people.giUserId ?? null;
@@ -13,6 +13,7 @@ export function createMemoryStore(people: { giUserId?: number | null } = {}): St
   const messages: { chatId: number; name: string; role: "user" | "bot"; text: string }[] = [];
   const meta = new Map<string, string>();
   let nextId = 1;
+  let mesa: Mesa = emptyMesa();
 
   return {
     async balances() {
@@ -177,6 +178,10 @@ export function createMemoryStore(people: { giUserId?: number | null } = {}): St
     },
     async searchContent() {
       return [];
+    },
+    async updateMesa(change) {
+      change(mesa);
+      return { ...mesa };
     },
     async close() {},
   };

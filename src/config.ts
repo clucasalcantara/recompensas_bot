@@ -27,7 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     token,
     allowedUserIds: parseIds(env.ALLOWED_USER_IDS),
-    lucasName: env.LUCAS_NAME?.trim() || "Lucas",
+    lucasName: env.LUCAS_NAME?.trim() || "Caio",
     giName: env.GI_NAME?.trim() || "Gi",
     lucasUserId: parseUserId(env.LUCAS_USER_ID) ?? parseIds(env.ALLOWED_USER_IDS)[0] ?? null,
     giUserId: parseUserId(env.GI_USER_ID),

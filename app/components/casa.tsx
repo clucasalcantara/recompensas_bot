@@ -13,7 +13,7 @@ import { NotesView } from "./notes";
 import { PlayView } from "./play";
 
 const views = [
-  ["casa", "Casa", HouseIcon],
+  ["casa", "Cantinho", HouseIcon],
   ["jogos", "Jogos", Dices],
   ["noite", "Noite", Moon],
   ["nos", "Nós", Heart],
@@ -62,7 +62,7 @@ export function Casa({ names, initialHouse }: { names: Names; initialHouse: Hous
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-5 pt-6">
       <header className="flex items-start justify-between gap-4 pb-8">
         <div>
-          <p className="text-xs tracking-[0.18em] text-primary">a casa</p>
+          <p className="text-xs tracking-[0.18em] text-primary">Nosso Cantinho</p>
           <p className="font-display mt-1 text-2xl leading-none">Oi, {house.you}</p>
         </div>
         <div className="flex shrink-0 gap-1 pt-1">
@@ -99,7 +99,9 @@ export function Casa({ names, initialHouse }: { names: Names; initialHouse: Hous
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
             {view === "casa" ? <HomeView house={house} busy={busy} run={run} apply={apply} /> : null}
-            {view === "jogos" ? <PlayView house={house} busy={busy} run={run} /> : null}
+            {view === "jogos" ? (
+              <PlayView house={house} busy={busy} run={run} onAuth={() => setHouse(null)} />
+            ) : null}
             {view === "noite" ? <NightView busy={busy} run={run} /> : null}
             {view === "nos" ? <NotesView house={house} busy={busy} run={run} apply={apply} /> : null}
           </motion.div>

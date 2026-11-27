@@ -29,9 +29,9 @@ export function Lock({
         <span className="h-4 w-7 -translate-y-2 rounded-t-md rounded-b-sm bg-ring" />
         <span className="h-4 w-7 rounded-t-md rounded-b-sm bg-caio" />
       </div>
-      <p className="text-xs tracking-[0.18em] text-primary">a casa</p>
+      <p className="text-xs tracking-[0.18em] text-primary">Nosso Cantinho</p>
       <h1 className="font-display mt-3 text-5xl leading-none">Só vocês dois.</h1>
-      <p className="mt-4 text-muted-foreground">A escada, os jogos, o jantar e a história que o bot vai aprendendo.</p>
+      <p className="mt-4 text-muted-foreground">O cantinho de vocês, com a escada e o resto da noite.</p>
       <form
         className="mt-10 space-y-5 rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/8"
         onSubmit={(event) => {

@@ -1,4 +1,4 @@
-import type { Balances, Owner, Side } from "./domain/ledger.js";
+import { openAccount, type Balances, type Owner, type Side } from "./domain/ledger.js";
 import type { DomainError } from "./domain/ledger.js";
 import {
   CYCLE_MINUTES,
@@ -54,9 +54,9 @@ export function formatBalance(
   }
 
   const lines = [
-    formatPerson(config.lucasName, current.lucas, "Mamadinha"),
+    formatPerson(config.lucasName, current.lucas, "Mamadinha", ORAL_PER_CYCLE),
     "",
-    formatPerson(config.giName, current.gi, "Massagem"),
+    formatPerson(config.giName, current.gi, "Massagem", MASSAGE_PER_CYCLE),
   ];
 
   return lines.join("\n");
@@ -73,9 +73,9 @@ export function formatNothingToCollect(
   return [
     "Nenhum prêmio esperando.",
     "",
-    formatPerson(config.lucasName, current.lucas, "Mamadinha"),
+    formatPerson(config.lucasName, current.lucas, "Mamadinha", ORAL_PER_CYCLE),
     "",
-    formatPerson(config.giName, current.gi, "Massagem"),
+    formatPerson(config.giName, current.gi, "Massagem", MASSAGE_PER_CYCLE),
   ].join("\n");
 }
 
@@ -123,7 +123,21 @@ function prizeExamples(command: string, available: number, unit: number): string
   return `/${command} ${available - 1} leva ${available - 1} min.`;
 }
 
-export function formatHistory(events: LedgerEvent[], timeZone: string): string {
+export function personName(
+  userId: number,
+  stored: string,
+  people: { lucasName: string; giName: string; lucasUserId: number | null; giUserId: number | null },
+): string {
+  if (people.giUserId !== null && userId === people.giUserId) return people.giName;
+  if (people.lucasUserId !== null && userId === people.lucasUserId) return people.lucasName;
+  return stored;
+}
+
+export function formatHistory(
+  events: LedgerEvent[],
+  timeZone: string,
+  people?: { lucasName: string; giName: string; lucasUserId: number | null; giUserId: number | null },
+): string {
   if (events.length === 0) {
     return [
       "Nada lançado ainda.",
@@ -138,18 +152,26 @@ export function formatHistory(events: LedgerEvent[], timeZone: string): string {
       event.type === "session" ? event.session.createdAt : event.redemption.createdAt,
       timeZone,
     );
-    if (event.type === "session") {
-      const note = event.session.note ? ` · ${event.session.note}` : "";
-      lines.push(
-        `${when} · ${event.session.actorName} lançou ${event.session.minutes} min de escada${note}`,
-      );
-    } else {
-      lines.push(
-        `${when} · ${event.redemption.actorName} coletou ${event.redemption.minutes} min de ${prizeLabel(event.redemption.kind)}`,
-      );
-    }
+    lines.push(`${when} · ${historyText(event, people)}`);
   }
   return lines.join("\n");
+}
+
+export function historyText(
+  event: LedgerEvent,
+  people?: { lucasName: string; giName: string; lucasUserId: number | null; giUserId: number | null },
+): string {
+  if (event.type === "session") {
+    const note = event.session.note ? ` · ${event.session.note}` : "";
+    const name = people
+      ? personName(event.session.userId, event.session.actorName, people)
+      : event.session.actorName;
+    return `${name} lançou ${event.session.minutes} min de escada${note}`;
+  }
+  const name = people
+    ? personName(event.redemption.userId, event.redemption.actorName, people)
+    : event.redemption.actorName;
+  return `${name} coletou ${event.redemption.minutes} min de ${prizeLabel(event.redemption.kind)}`;
 }
 
 export function formatRedeem(kind: RewardKind, minutes: number, after: Balances): string {
@@ -208,20 +230,23 @@ export function formatOwnBalance(
   owner: Owner,
   current: Balances,
 ): string {
-  if (owner === "gi") return formatPerson(config.giName, current.gi, "Massagem");
-  return formatPerson(config.lucasName, current.lucas, "Mamadinha");
+  if (owner === "gi") return formatPerson(config.giName, current.gi, "Massagem", MASSAGE_PER_CYCLE);
+  return formatPerson(config.lucasName, current.lucas, "Mamadinha", ORAL_PER_CYCLE);
 }
 
-function formatPerson(name: string, side: Side, prize: string): string {
-  if (side.totalMinutes === 0 && side.reward.available === 0) {
+function formatPerson(name: string, side: Side, prize: string, perCycle: number): string {
+  const open = openAccount(side, perCycle);
+  if (open.totalMinutes === 0 && side.reward.available === 0) {
     return `${name}\nZerada. ${prize}: 0 min.`;
   }
+  const collected = perCycle > 0 ? Math.floor(side.reward.spent / perCycle) : 0;
   const lines = [
     name,
-    `${side.totalMinutes} min · ${cycleLabel(side.cycles)} · ${side.bankMinutes} min no banco`,
+    `${open.totalMinutes} min · ${open.bankMinutes} min no banco`,
     `${prize}: ${side.reward.available} min`,
   ];
-  const next = minutesToNext(side);
+  if (collected > 0) lines.push(collected === 1 ? "1 recompensa já coletada." : `${collected} recompensas já coletadas.`);
+  const next = minutesToNext(open);
   if (next) lines.push(next);
   return lines.join("\n");
 }
@@ -234,10 +259,6 @@ function minutesToNext(side: Side): string | null {
 
 function prizeLabel(kind: RewardKind): string {
   return kind === "massagem" ? "massagem" : "mamadinha";
-}
-
-function cycleLabel(cycles: number): string {
-  return cycles === 1 ? "1 ciclo" : `${cycles} ciclos`;
 }
 
 function formatEmptyAccount(config: Pick<Config, "giName" | "lucasName">): string {

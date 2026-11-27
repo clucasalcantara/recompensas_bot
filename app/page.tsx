@@ -8,7 +8,7 @@ import { isHouse, type House, type Names } from "./types";
 
 export const dynamic = "force-dynamic";
 
-const fallbackNames: Names = { lucasName: "Lucas", giName: "Gi" };
+const fallbackNames: Names = { lucasName: "Caio", giName: "Gi" };
 
 export default async function Page() {
   const names = readNames();

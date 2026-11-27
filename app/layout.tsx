@@ -6,7 +6,7 @@ const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces" });
 
 export const metadata: Metadata = {
-  title: "a casa",
+  title: "Nosso Cantinho",
   robots: { index: false, follow: false },
 };
 
