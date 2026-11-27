@@ -71,6 +71,9 @@ export async function runDailyReminder(deps: {
         facts,
         seed: `${summary.today}-${randomUUID()}`,
       });
+  if (/mamadinha/i.test(text)) {
+    throw new Error("O lembrete citou mamadinha.");
+  }
   if (!reminderStaysInside(text, facts)) {
     throw new Error("O lembrete inventou um número que não está na conta.");
   }

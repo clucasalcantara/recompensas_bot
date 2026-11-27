@@ -215,6 +215,7 @@ export function reminderSystemPrompt(): string {
     "Use só os fatos recebidos. Não invente minuto, prêmio, nem quem subiu.",
     "Os minutos que ainda valem são o saldo. Não troque esse número por outra conta.",
     "Se um prêmio disponível é 0, não ofereça coleta. Se a pessoa não subiu hoje, pode dizer isso sem transformar em lista.",
+    "Não escreva a palavra mamadinha. A coleta se diz como no fato 'pode coletar', no formato '1 recompensa de 2 min'.",
     "Sem título, sem lista, sem emoji, sem a palavra Dica.",
     "Umas poucas frases. Sem explicar a regra, a menos que a conta ainda não tenha escada.",
   ].join(" ");
@@ -238,7 +239,8 @@ export async function writeReminder(input: {
     user: reminderUserPrompt(input.facts, input.seed ?? randomUUID()),
     fetchImpl: input.fetchImpl,
     temperature: 1,
-    maxTokens: 400,
+    maxTokens: 1200,
+    reasoningEffort: "low",
   });
 }
 

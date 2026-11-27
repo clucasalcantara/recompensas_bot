@@ -124,7 +124,8 @@ test("os fatos do lembrete trazem o saldo aberto, sem texto pronto", () => {
     streak: 1,
   });
   assert.match(waiting, /Lucas: minutos que ainda valem: 80/);
-  assert.match(waiting, /mamadinha disponível para coletar: 2 min/);
+  assert.match(waiting, /pode coletar: 1 recompensa de 2 min/);
+  assert.doesNotMatch(waiting, /mamadinha/);
   assert.match(waiting, /Gi: minutos que ainda valem: 60/);
   assert.match(waiting, /massagem disponível para coletar: 5 min/);
   assert.match(waiting, /Alguém subiu hoje: não/);
