@@ -105,8 +105,7 @@ export function createBot(config: Config, store: Store): Bot {
   });
 
   bot.command("saldo", async (ctx) => {
-    const current = await store.balances();
-    await replyWithPrizes(ctx, formatBalance(config, current), current);
+    await ctx.reply(formatBalance(config, await store.balances()));
   });
 
   bot.command("historico", async (ctx) => {
@@ -326,7 +325,7 @@ async function talk(
       const current = await store.balances();
       const line =
         decision.scope === "me" ? formatOwnBalance(config, owner, current) : formatBalance(config, current);
-      await sayAccount(ctx, config, line, sceneWasOpen, current);
+      await sayAccount(ctx, config, line, sceneWasOpen);
       return;
     }
     case "history":
