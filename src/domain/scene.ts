@@ -1,5 +1,5 @@
-import type { PlayKind, Heat } from "./play.js";
 import { parseStairs } from "./parse.js";
+import { parseHeat, type Heat, type PlayKind } from "./play.js";
 import { resolveAbout, type LearnedAbout, type PrefAbout, type PrefKind } from "./prefs.js";
 import type { AgentChoice, Decision } from "./reason.js";
 
@@ -108,7 +108,7 @@ export function planTurn(input: {
   }
 
   const decision = input.choice.decision;
-  const scene = nextScene(input.scene, input.choice);
+  const scene = nextScene(input.scene, input.choice, input.text);
   const recipient = recipientFor(input.choice);
   const savePreference =
     decision.action === "preference"
@@ -157,17 +157,28 @@ export function planTurn(input: {
   return { ...base, reply: "ledger", scene, decision, recipient };
 }
 
-function nextScene(current: Scene | null, choice: AgentChoice): Scene | null {
+function nextScene(current: Scene | null, choice: AgentChoice, text: string): Scene | null {
   const decision = choice.decision;
   if (choice.sceneMove === "stop" || choice.sceneMove === "end" || decision.action === "stop") return null;
   if (ENDS.has(decision.action)) return null;
   if (decision.action === "play" || decision.action === "coin") {
     const kind: PlayKind = decision.action === "coin" ? "moeda" : decision.kind;
-    const given = decision.action === "coin" ? decision.heat : decision.heat;
-    return { heat: given ?? current?.heat ?? 2, kind };
+    const proposed = decision.heat;
+    return { heat: directedHeat({ text, current: current?.heat ?? null, proposed }), kind };
   }
   if (choice.sceneMove === "continue" || choice.sceneMove === "none") return current;
   return current;
+}
+
+export function directedHeat(input: { text: string; current: Heat | null; proposed?: Heat }): Heat {
+  const asked = parseHeat(input.text);
+  if (asked) return asked;
+  if (input.current) {
+    if (input.proposed !== undefined && input.proposed > input.current) return input.current;
+    return input.proposed ?? input.current;
+  }
+  if (input.proposed === 3) return 2;
+  return input.proposed ?? 2;
 }
 
 function recipientFor(choice: AgentChoice): Recipient {

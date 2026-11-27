@@ -26,7 +26,7 @@ export function formatGameMenu(): string {
     "Brincadeira — uma brincadeira de casal pra agora.",
     "",
     "1 é leve. 2 é médio. 3 é quente.",
-    "Quanto maior o número, mais direto. Sempre só entre vocês.",
+    "Quente é sexo entre vocês. Conversa funda não muda o nível.",
   ].join("\n");
 }
 
@@ -35,9 +35,9 @@ export function formatLevelAsk(kind: "verdade" | "desafio" | "moeda"): string {
     kind === "verdade" ? "A pergunta" : kind === "desafio" ? "O desafio" : "Quem cair na moeda";
   return [
     `${subject} segue o nível.`,
-    "1 leve: carinho, sem apelo direto.",
-    "2 médio: clima e sugestão.",
-    "3 quente: bem direto, só entre vocês.",
+    "1 leve: romance e brincadeira, sem sexo.",
+    "2 médio: flerte e sensual, sem explícito.",
+    "3 quente: a conversa vai para o sexo, entre vocês.",
     "",
     "Qual nível?",
   ].join("\n");

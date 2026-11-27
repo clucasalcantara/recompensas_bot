@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Balances } from "./domain/ledger.js";
+import { directionFor } from "./domain/library.js";
 import type { CoupleNames, Heat, PlayKind } from "./domain/play.js";
 import { parseAgent, reasonSystemPrompt, reasonUserPrompt, type AgentChoice } from "./domain/reason.js";
 import { phraseSystem, phraseUser } from "./domain/phrase.js";
@@ -34,7 +35,9 @@ export function systemPrompt(): string {
     "Cada resposta é uma coisa só, curta.",
     "O tom pode ser romântico, sexual ou os dois.",
     "Romance é cuidado, elogio, conversa, surpresa, rotina de dois.",
-    "Quando o nível for 3, sexo é desejo entre os dois, com os dois querendo.",
+    "Quando o nível for 3, a direção é sexual de propósito, entre os dois, com os dois querendo. Não é só uma versão mais emocionada do nível 2.",
+    "Profundidade emocional não aumenta o nível. Nível 1 e 2 não ganham sexo explícito para ficar mais interessante.",
+    "Se o nível estiver ambíguo, fique no menos sexual.",
     "Casal monogâmico. Só essas duas pessoas. Sem terceira pessoa, sem grupo, sem troca.",
     "Se o pedido trouxer preferência salva, obedeça. Não proponha o que alguém não quer.",
     "Nada nojento, violento, agressivo ou humilhante.",
@@ -82,9 +85,15 @@ export function userPrompt(input: {
 }
 
 function intensity(tone: Tone, heat?: Heat): string {
-  if (heat === 1) return "Nível 1, leve. Carinho e clima. Sem sexo explícito.";
-  if (heat === 2) return "Nível 2, médio. Sensual e sugestivo. Sem detalhe gráfico.";
-  if (heat === 3) return "Nível 3, quente. Explícito e consensual, só entre os dois. Sem violência.";
+  if (heat === 1) {
+    return "Nível 1, leve. Diversão, curiosidade e romance leve. Pode ter emoção. Sem direção sexual";
+  }
+  if (heat === 2) {
+    return "Nível 2, médio. Tensão, flerte e sensualidade. Pode ser fundo. Sem sexo explícito";
+  }
+  if (heat === 3) {
+    return "Nível 3, quente. Direção sexual de propósito, explícita e consensual, só entre os dois. Não é só vulnerabilidade. Sem violência";
+  }
   if (tone === "romantico") return "romântico, sem sexo explícito";
   if (tone === "sexual") return "sexual, explícito e consensual, só entre os dois";
   return "romance e desejo na mesma mensagem, só entre os dois";
@@ -270,6 +279,7 @@ export async function composePlay(
   const tone = client.heat ? toneForHeat(client.heat) : rollTone(rng);
   const speaker = client.speaker;
   const heat = client.heat;
+  const guide = directionFor(heat ?? 2, kind);
 
   if (kind === "dado") {
     const face = 1 + Math.floor(rng() * 6);
@@ -280,7 +290,7 @@ export async function composePlay(
       tone,
       speaker,
       heat,
-      detail: `O dado caiu em ${face}.`,
+      detail: [guide, `O dado caiu em ${face}.`].filter(Boolean).join("\n"),
     });
     return `Dado: ${face}\n${line}`;
   }
@@ -298,12 +308,14 @@ export async function composePlay(
       tone,
       speaker,
       heat,
-      detail: `${caraName} é cara. ${coroaName} é coroa. Caiu ${side}. ${who} conduz.`,
+      detail: [guide, `${caraName} é cara. ${coroaName} é coroa. Caiu ${side}. ${who} conduz.`]
+        .filter(Boolean)
+        .join("\n"),
     });
     return `${heads ? "Cara" : "Coroa"}. ${who} conduz.\n${line}`;
   }
 
-  const line = await generateLine({ ...client, names, kind, tone, speaker, heat });
+  const line = await generateLine({ ...client, names, kind, tone, speaker, heat, detail: guide ?? undefined });
   const title =
     kind === "dica"
       ? "Dica"
