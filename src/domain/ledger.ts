@@ -37,7 +37,17 @@ export type DomainError =
   | "not-enough"
   | "undo-would-overdraw";
 
-export function openAccount(side: Side, perCycle: number): Side {
+export type OpenView = {
+  totalMinutes: number;
+  cycles: number;
+  bankMinutes: number;
+  minutesToNextCycle: number;
+};
+
+export function openAccount(
+  side: { totalMinutes: number; reward: { spent: number } },
+  perCycle: number,
+): OpenView {
   const closed = perCycle > 0 ? Math.floor(side.reward.spent / perCycle) : 0;
   const totalMinutes = Math.max(0, side.totalMinutes - closed * CYCLE_MINUTES);
   const cycles = Math.floor(totalMinutes / CYCLE_MINUTES);
@@ -48,7 +58,6 @@ export function openAccount(side: Side, perCycle: number): Side {
     cycles,
     bankMinutes,
     minutesToNextCycle: CYCLE_MINUTES - bankMinutes,
-    reward: side.reward,
   };
 }
 

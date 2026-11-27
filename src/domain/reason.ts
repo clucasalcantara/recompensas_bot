@@ -72,8 +72,8 @@ export function accountFacts(input: {
   return [
     `Quem falou: ${input.speaker}. A outra pessoa é ${input.partner}.`,
     "Conta real. Use para decidir. Não copie número nenhum na fala.",
-    `${input.lucasName}: ${lucas.totalMinutes} min de escada, ${lucas.cycles} ciclos, ${lucas.bankMinutes} no banco, ${lucas.reward.available} min de prêmio dele.`,
-    `${input.giName}: ${gi.totalMinutes} min de escada, ${gi.cycles} ciclos, ${gi.bankMinutes} no banco, ${gi.reward.available} min de prêmio dela.`,
+    `${input.lucasName}: ${lucas.totalMinutes} min de escada, ${lucas.cycles} ciclos, ${lucas.bankMinutes} no banco, ${input.balances.lucas.reward.available} min de prêmio dele.`,
+    `${input.giName}: ${gi.totalMinutes} min de escada, ${gi.cycles} ciclos, ${gi.bankMinutes} no banco, ${input.balances.gi.reward.available} min de prêmio dela.`,
   ].join("\n");
 }
 

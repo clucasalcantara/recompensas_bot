@@ -251,7 +251,7 @@ function formatPerson(name: string, side: Side, prize: string, perCycle: number)
   return lines.join("\n");
 }
 
-function minutesToNext(side: Side): string | null {
+function minutesToNext(side: { totalMinutes: number; bankMinutes: number; minutesToNextCycle: number }): string | null {
   if (side.totalMinutes === 0) return null;
   const left = side.bankMinutes === 0 ? CYCLE_MINUTES : side.minutesToNextCycle;
   return `Faltam ${left} min pro próximo prêmio.`;
