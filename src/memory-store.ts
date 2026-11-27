@@ -1,12 +1,14 @@
 import { balances, type Owner } from "./domain/ledger.js";
+import { decodeScene, encodeScene } from "./domain/scene.js";
 import type { Preference } from "./domain/prefs.js";
-import type { LedgerEvent, Redemption, Session, Store } from "./store.js";
+import type { ChatLine, LedgerEvent, Redemption, Session, Store } from "./store.js";
 
 export function createMemoryStore(people: { giUserId?: number | null } = {}): Store {
   const giUserId = people.giUserId ?? null;
   const sessions: Session[] = [];
   const redemptions: Redemption[] = [];
   const preferences: Preference[] = [];
+  const messages: { chatId: number; name: string; role: "user" | "bot"; text: string }[] = [];
   const meta = new Map<string, string>();
   let nextId = 1;
 
@@ -116,6 +118,27 @@ export function createMemoryStore(people: { giUserId?: number | null } = {}): St
       const key = `pref_ask:${userId}`;
       if (!questionId) meta.delete(key);
       else meta.set(key, questionId);
+    },
+    async addMessage(input) {
+      const text = input.text.trim().slice(0, 2000);
+      if (!text) return;
+      messages.push({ chatId: input.chatId, name: input.name, role: input.role, text });
+      const own = messages.filter((line) => line.chatId === input.chatId);
+      if (own.length > 400) messages.splice(0, messages.length, ...messages.filter((line) => line.chatId !== input.chatId), ...own.slice(-400));
+    },
+    async recentMessages(chatId, limit) {
+      return messages
+        .filter((line) => line.chatId === chatId)
+        .slice(-limit)
+        .map((line): ChatLine => ({ name: line.name, role: line.role, text: line.text }));
+    },
+    async getScene(chatId) {
+      return decodeScene(meta.get(`scene:${chatId}`) ?? null);
+    },
+    async setScene(chatId, scene) {
+      const raw = encodeScene(scene);
+      if (!raw) meta.delete(`scene:${chatId}`);
+      else meta.set(`scene:${chatId}`, raw);
     },
   };
 }

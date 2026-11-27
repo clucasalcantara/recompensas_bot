@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Balances } from "./domain/ledger.js";
 import type { CoupleNames, Heat, PlayKind } from "./domain/play.js";
-import { parseDecision, reasonSystemPrompt, reasonUserPrompt, type Decision } from "./domain/reason.js";
+import { parseAgent, reasonSystemPrompt, reasonUserPrompt, type AgentChoice } from "./domain/reason.js";
 
 export type Tone = "romantico" | "sexual" | "misto";
 
@@ -180,8 +180,10 @@ export async function decideIntent(input: {
   balances: Balances;
   text: string;
   recent?: string[];
+  scene?: { heat: number; kind: string } | null;
+  tastes?: string;
   fetchImpl?: typeof fetch;
-}): Promise<Decision | null> {
+}): Promise<AgentChoice | null> {
   const raw = await complete({
     apiKey: input.apiKey,
     model: input.model,
@@ -192,7 +194,7 @@ export async function decideIntent(input: {
     maxTokens: 400,
     json: true,
   });
-  return parseDecision(raw);
+  return parseAgent(raw);
 }
 
 async function complete(input: {

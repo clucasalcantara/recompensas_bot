@@ -12,37 +12,12 @@ import type { LedgerEvent } from "./store.js";
 
 export function formatRules(config: Pick<Config, "giName" | "lucasName">): string {
   return [
-    "A conta da escada.",
+    "Só vale escada. Esteira, bike e corrida ficam de fora.",
     "",
-    "Só vale escada. Esteira, bike e corrida não entram.",
+    `A cada ${CYCLE_MINUTES} min da ${config.giName}, ${MASSAGE_PER_CYCLE} min de massagem. A cada ${CYCLE_MINUTES} min do ${config.lucasName}, ${ORAL_PER_CYCLE} min de mamadinha.`,
+    "A escada de um não paga o prêmio do outro. O que sobra fica no banco de quem subiu.",
     "",
-    `A cada ${CYCLE_MINUTES} min da ${config.giName}: ${MASSAGE_PER_CYCLE} min de massagem.`,
-    `A cada ${CYCLE_MINUTES} min do ${config.lucasName}: ${ORAL_PER_CYCLE} min de mamadinha.`,
-    "A escada de um não paga o prêmio do outro.",
-    "Os ciclos da mesma pessoa somam.",
-    "",
-    "Pode falar sem comando.",
-    "fiz 40 de escada",
-    "+35",
-    "quanto a gente tem",
-    "coleta a massagem",
-    "me dá uma dica",
-    "",
-    "Conta",
-    "/escada 40",
-    "/saldo",
-    "/coletar",
-    "/ranking",
-    "/historico",
-    "/desfazer",
-    "",
-    "Clima, sem mexer no saldo",
-    "/dica",
-    "/brincadeira",
-    "/jogo",
-    "",
-    "De tarde eu lembro da escada. Essa mensagem não cobra prêmio.",
-    "No grupo eu respondo marcação, resposta, comando ou +minutos.",
+    "Manda os minutos quando subir. De tarde eu lembro da escada, sem cobrar o prêmio.",
   ].join("\n");
 }
 
@@ -57,21 +32,16 @@ export function formatLog(input: {
   const beforeSide = input.before[input.owner];
   const afterSide = input.after[input.owner];
   const cyclesGained = afterSide.cycles - beforeSide.cycles;
-  const prize = input.owner === "gi" ? "massagem" : "mamadinha";
   const perCycle = input.owner === "gi" ? MASSAGE_PER_CYCLE : ORAL_PER_CYCLE;
   const who = input.owner === "gi" ? input.config.giName : input.config.lucasName;
-  const lines = [`${who} somou ${input.minutes} min${input.note ? ` · ${input.note}` : ""}.`];
+  const lines = [`${who}, ${input.minutes} min${input.note ? ` · ${input.note}` : ""}.`];
 
   if (cyclesGained > 0) {
-    lines.push(
-      "",
-      cyclesGained === 1 ? "Fechou 1 ciclo." : `Fechou ${cyclesGained} ciclos.`,
-      `${who} ganhou ${cyclesGained * perCycle} min de ${prize} (disponível: ${afterSide.reward.available}).`,
-    );
+    lines.push(`${who}, já pode coletar ${cyclesGained * perCycle} min.`);
+  } else {
+    const next = minutesToNext(afterSide);
+    if (next) lines.push(next);
   }
-
-  const next = minutesToNext(afterSide);
-  if (next) lines.push("", next);
   return lines.join("\n");
 }
 

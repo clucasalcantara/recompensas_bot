@@ -39,6 +39,12 @@ export function reasonSystemPrompt(): string {
     "Verdade ou desafio sem nível fica no 2.",
     "O prêmio da Gi usa kind massagem. O prêmio do Caio usa kind boquete.",
     "say só existe em chat, uma frase, para quem falou, sem lista, sem saldo, sem oferecer o próximo passo.",
+    "Cena aberta continua no mesmo nível. para encerra na hora, ação stop.",
+    "recipient é speaker, partner ou both. Não chame a outra pessoa se ela não entra nesta fala.",
+    "invite é uma frase ou null. Só se a cena já estava aberta. Sem coletar, sem saldo, sem prêmio.",
+    "respond false quando o silêncio for melhor.",
+    "Preferência nova não vira sugestão nesta fala. Não diga que anotou.",
+    "scene é open, continue, end, stop ou none.",
     "Exemplos:",
     '{"action":"balance","scope":"both"} para «Como que estão os saldos?»',
     '{"action":"balance","scope":"me"} para «Quantos minutos eu tenho?»',
@@ -74,10 +80,20 @@ export function reasonUserPrompt(input: {
   balances: Balances;
   text: string;
   recent?: string[];
+  scene?: { heat: number; kind: string } | null;
+  tastes?: string;
 }): string {
   const recent = (input.recent ?? []).filter((line) => line.trim().length > 0).slice(-12);
+  const scene =
+    input.scene === undefined
+      ? ""
+      : input.scene
+        ? `Cena aberta: ${input.scene.kind}, nível ${input.scene.heat}.`
+        : "Cena: fechada.";
   return [
     accountFacts(input),
+    scene,
+    input.tastes ?? "",
     recent.length > 0 ? `Contexto recente:\n${recent.join("\n")}` : "",
     `Mensagem: ${input.text}`,
   ]
@@ -85,10 +101,40 @@ export function reasonUserPrompt(input: {
     .join("\n");
 }
 
+export type Recipient = "speaker" | "partner" | "both";
+
+export type SceneMove = "open" | "continue" | "end" | "stop" | "none";
+
+export type AgentChoice = {
+  decision: Decision;
+  respond: boolean;
+  recipient: Recipient;
+  invite: string | null;
+  sceneMove: SceneMove;
+};
+
+export function parseAgent(raw: string): AgentChoice | null {
+  const parsed = extractJson(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const body = parsed as Record<string, unknown>;
+  const decision = decisionFrom(body);
+  if (!decision) return null;
+  return {
+    decision,
+    respond: body.respond !== false,
+    recipient: recipientOf(body.recipient),
+    invite: inviteOf(body.invite),
+    sceneMove: sceneMoveOf(body.scene, decision),
+  };
+}
+
 export function parseDecision(raw: string): Decision | null {
   const parsed = extractJson(raw);
-  if (!parsed || typeof parsed !== "object") return null;
-  const body = parsed as Record<string, unknown>;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  return decisionFrom(parsed as Record<string, unknown>);
+}
+
+function decisionFrom(body: Record<string, unknown>): Decision | null {
   const action = typeof body.action === "string" ? body.action : "";
 
   if (action === "balance") return { action, scope: scopeOf(body.scope) };
@@ -108,6 +154,41 @@ export function parseDecision(raw: string): Decision | null {
   if (action === "preference") return preferenceOf(body);
   if (action === "chat") return chatOf(body);
   return null;
+}
+
+function recipientOf(value: unknown): Recipient {
+  const text = fold(value);
+  if (text === "partner" || text === "parceiro" || text === "parceira") return "partner";
+  if (text === "both" || text === "casal" || text === "os dois") return "both";
+  return "speaker";
+}
+
+function sceneMoveOf(value: unknown, decision: Decision): SceneMove {
+  const text = fold(value);
+  if (text === "open" || text === "continue" || text === "end" || text === "stop" || text === "none") {
+    return text;
+  }
+  if (decision.action === "stop") return "stop";
+  if (decision.action === "play" || decision.action === "coin") return "open";
+  if (
+    decision.action === "stairs" ||
+    decision.action === "balance" ||
+    decision.action === "history" ||
+    decision.action === "ranking" ||
+    decision.action === "rules" ||
+    decision.action === "undo" ||
+    decision.action === "collect" ||
+    decision.action === "hello"
+  ) {
+    return "end";
+  }
+  return "continue";
+}
+
+function inviteOf(value: unknown): string | null {
+  const invite = noteOf(value);
+  if (!invite || /coletar|pr[eê]mio|saldo|mamadinha|massagem/i.test(invite)) return null;
+  return invite;
 }
 
 export function stairWrite(
@@ -134,7 +215,7 @@ function playOf(body: Record<string, unknown>): Decision | null {
   if (play === "moeda") return coinOf({ ...body, action: "coin" });
   const heat = heatOf(body.heat);
   if (play === "verdade" || play === "desafio") {
-    return { action: "play", kind: play, heat: heat ?? 2 };
+    return heat ? { action: "play", kind: play, heat } : { action: "play", kind: play };
   }
   return heat ? { action: "play", kind: play, heat } : { action: "play", kind: play };
 }

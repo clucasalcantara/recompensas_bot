@@ -11,7 +11,6 @@ import { MASSAGE_PER_CYCLE, ORAL_PER_CYCLE, type RewardKind } from "./domain/rul
 import {
   answerNote,
   formatKnown,
-  formatSaved,
   nextQuestion,
   preferenceBrief,
   questionById,
@@ -19,6 +18,7 @@ import {
   type Learned,
 } from "./domain/prefs.js";
 import { stairWrite, type Decision } from "./domain/reason.js";
+import { isExplicitStop, planTurn } from "./domain/scene.js";
 import { helloLine } from "./domain/talk.js";
 import { composePlay, decideIntent } from "./suggest.js";
 import type { Store } from "./store.js";
@@ -49,6 +49,16 @@ export function createBot(config: Config, store: Store): Bot {
     const plus = /^\+\s*\d/.test(text.trim());
     const inGroup = Boolean(ctx.chat && ctx.chat.type !== "private");
 
+    if (ctx.chat?.id && text.trim() && (inGroup || ctx.chat.type === "private")) {
+      await store.addMessage({
+        chatId: ctx.chat.id,
+        userId,
+        name: ctx.from?.first_name?.trim() || "Alguém",
+        role: "user",
+        text,
+      });
+    }
+
     if (inGroup && !ctx.callbackQuery) {
       if (!config.groupsEnabled && !plus) return;
       const directed = addressedToBot({
@@ -57,7 +67,7 @@ export function createBot(config: Config, store: Store): Bot {
         replyToBot: ctx.msg?.reply_to_message?.from?.id === ctx.me?.id,
         mentionsBot: messageMentionsBot(ctx),
       });
-      if (!directed) return;
+      if (!directed && !isExplicitStop(text)) return;
     }
 
     if (config.allowedUserIds.length === 0) {
@@ -143,7 +153,7 @@ export function createBot(config: Config, store: Store): Bot {
   bot.command("moeda", async (ctx) => {
     const text = `moeda ${String(ctx.match ?? "")}`.trim();
     try {
-      const decision = await decideIntent({
+      const choice = await decideIntent({
         apiKey: config.togetherApiKey,
         model: config.togetherModel,
         speaker: currentSpeaker(ctx, config).name,
@@ -153,8 +163,8 @@ export function createBot(config: Config, store: Store): Bot {
         balances: await store.balances(),
         text,
       });
-      if (decision?.action === "coin") {
-        await beginCoin(ctx, store, config, decision.cara, decision.heat);
+      if (choice?.decision.action === "coin") {
+        await beginCoin(ctx, store, config, choice.decision.cara, choice.decision.heat);
         return;
       }
     } catch (error) {
@@ -208,11 +218,24 @@ async function talk(
 ): Promise<void> {
   const names = { giName: config.giName, lucasName: config.lucasName };
   const speaker = currentSpeaker(ctx, config);
-  await ctx.replyWithChatAction("typing");
+  const owner = speakerOwner(ctx, config);
+  const chatId = ctx.chat?.id ?? null;
 
-  let decision: Decision | null = null;
+  if (isExplicitStop(text)) {
+    if (chatId) await store.setScene(chatId, null);
+    await ctx.reply("Parou.");
+    return;
+  }
+
+  await ctx.replyWithChatAction("typing");
+  const scene = chatId ? await store.getScene(chatId) : null;
+  const recent = chatId
+    ? (await store.recentMessages(chatId, 12)).map((line) => `${line.name}: ${line.text}`)
+    : [];
+
+  let choice: Awaited<ReturnType<typeof decideIntent>> = null;
   try {
-    decision = await decideIntent({
+    choice = await decideIntent({
       apiKey: config.togetherApiKey,
       model: config.togetherModel,
       speaker: speaker.name,
@@ -221,18 +244,46 @@ async function talk(
       giName: config.giName,
       balances: await store.balances(),
       text,
-      recent: [],
+      recent,
+      scene,
+      tastes: preferenceBrief(await store.listPreferences(), names),
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     await ctx.reply("Repete pra mim.");
     return;
   }
-  if (!decision) {
-    await ctx.reply("Repete pra mim.");
+
+  const plan = planTurn({
+    text,
+    place: isGroup(ctx) ? "group" : "private",
+    speaker: owner,
+    speakerName: speaker.name,
+    addressed: true,
+    scene,
+    choice,
+  });
+  if (chatId) await store.setScene(chatId, plan.scene);
+  if (plan.savePreference && ctx.from?.id) {
+    await store.addPreference({
+      userId: ctx.from.id,
+      owner: plan.savePreference.owner,
+      about: plan.savePreference.about,
+      kind: plan.savePreference.kind,
+      note: plan.savePreference.note,
+      question: null,
+    });
+  }
+  if (plan.reply === "quiet") return;
+  if (plan.reply === "stop" || plan.reply === "hello" || plan.reply === "model") {
+    const line = [plan.text, plan.invite].filter((part) => part && part.length > 0).join("\n");
+    if (line) await ctx.reply(line);
     return;
   }
-  if (await consumePending(ctx, store, config, text, decision)) return;
+
+  const decision = plan.decision;
+  if (!decision) return;
+  if (choice && (await consumePending(ctx, store, config, text, decision))) return;
 
   switch (decision.action) {
     case "stairs": {
@@ -246,7 +297,6 @@ async function talk(
     }
     case "balance": {
       const current = await store.balances();
-      const owner = speakerOwner(ctx, config);
       const line =
         decision.scope === "me" ? formatOwnBalance(config, owner, current) : formatBalance(config, current);
       await replyWithPrizes(ctx, line, current);
@@ -273,17 +323,12 @@ async function talk(
       await ctx.reply(formatGameMenu());
       return;
     case "play":
-      await sendPlay(ctx, store, config, decision.kind, decision.heat);
+      await sendPlay(ctx, store, config, decision.kind, plan.scene?.heat ?? decision.heat);
       return;
     case "coin":
-      await beginCoin(ctx, store, config, decision.cara, decision.heat);
+      await beginCoin(ctx, store, config, decision.cara, plan.scene?.heat ?? decision.heat);
       return;
     case "preference":
-      await saveLearned(ctx, store, config, {
-        about: decision.about,
-        kind: decision.kind,
-        note: decision.note,
-      });
       return;
     case "calibrate":
       await askNext(ctx, store, config);
@@ -305,16 +350,10 @@ async function talk(
         await collectFromText(ctx, store, config, "");
         return;
       }
-      await performCollect(
-        ctx,
-        store,
-        config,
-        decision.kind,
-        decision.minutes ?? "all",
-      );
+      await performCollect(ctx, store, config, decision.kind, decision.minutes ?? "all");
       return;
     case "chat":
-      await ctx.reply(decision.say);
+      if (decision.say) await ctx.reply(decision.say);
   }
 }
 
@@ -427,7 +466,6 @@ async function sendPlay(
     await ctx.reply("Não consegui gerar agora. Manda de novo.");
     return;
   }
-  await maybeAsk(ctx, store, config);
 }
 
 async function collectFromText(
@@ -621,7 +659,7 @@ async function answerPending(
     await ctx.reply(`Me fala em uma frase.\n${question.text}`);
     return;
   }
-  const { fresh } = await store.addPreference({
+  await store.addPreference({
     userId,
     owner,
     about: owner,
@@ -630,20 +668,6 @@ async function answerPending(
     question: question.id,
   });
   await store.setPendingPref(userId, null);
-  const saved = formatSaved({
-    aboutName: speaker.name,
-    self: true,
-    kind: question.kind,
-    note,
-    fresh,
-  });
-  const next = nextQuestion(await store.listPreferences(), userId, speaker.name);
-  if (!next) {
-    await ctx.reply(saved);
-    return;
-  }
-  await store.setPendingPref(userId, next.id);
-  await ctx.reply(`${saved}\n\n${next.text}`);
 }
 
 async function saveLearned(
@@ -656,8 +680,7 @@ async function saveLearned(
   if (!userId) return;
   const owner = speakerOwner(ctx, config);
   const about = resolveAbout(learned.about, owner);
-  const aboutName = about === "couple" ? "Vocês" : about === "gi" ? config.giName : config.lucasName;
-  const { fresh } = await store.addPreference({
+  await store.addPreference({
     userId,
     owner,
     about,
@@ -665,15 +688,6 @@ async function saveLearned(
     note: learned.note,
     question: null,
   });
-  await ctx.reply(
-    formatSaved({
-      aboutName,
-      self: about === owner,
-      kind: learned.kind,
-      note: learned.note,
-      fresh,
-    }),
-  );
 }
 
 async function askNext(ctx: Context, store: Store, config: Config): Promise<void> {
@@ -730,15 +744,6 @@ async function askPartner(ctx: Context, store: Store, config: Config): Promise<v
     return;
   }
   await ctx.reply(`Perguntei pra ${speaker.partnerName} no grupo.`);
-}
-
-async function maybeAsk(ctx: Context, store: Store, config: Config): Promise<void> {
-  const userId = ctx.from?.id;
-  if (!userId) return;
-  const items = await store.listPreferences();
-  if (items.some((item) => item.userId === userId)) return;
-  if (await store.getPendingPref(userId)) return;
-  await askNext(ctx, store, config);
 }
 
 function isGroup(ctx: Context): boolean {

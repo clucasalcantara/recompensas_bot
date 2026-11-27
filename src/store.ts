@@ -1,4 +1,5 @@
 import type { Balances } from "./domain/ledger.js";
+import type { Scene } from "./domain/scene.js";
 import type { Preference } from "./domain/prefs.js";
 import type { RewardKind } from "./domain/rules.js";
 
@@ -23,6 +24,12 @@ export type Redemption = {
 export type LedgerEvent =
   | { type: "session"; at: string; session: Session }
   | { type: "redemption"; at: string; redemption: Redemption };
+
+export type ChatLine = {
+  name: string;
+  role: "user" | "bot";
+  text: string;
+};
 
 export type Store = {
   balances(): Promise<Balances>;
@@ -59,6 +66,16 @@ export type Store = {
   }): Promise<{ preference: Preference; fresh: boolean }>;
   getPendingPref(userId: number): Promise<string | null>;
   setPendingPref(userId: number, questionId: string | null): Promise<void>;
+  addMessage(input: {
+    chatId: number;
+    userId: number | null;
+    name: string;
+    role: "user" | "bot";
+    text: string;
+  }): Promise<void>;
+  recentMessages(chatId: number, limit: number): Promise<ChatLine[]>;
+  getScene(chatId: number): Promise<Scene | null>;
+  setScene(chatId: number, scene: Scene | null): Promise<void>;
 };
 
 export type { Preference };

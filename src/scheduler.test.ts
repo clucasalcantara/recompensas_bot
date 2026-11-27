@@ -4,7 +4,7 @@ import type { Config } from "./config.js";
 import { forPg } from "./db.js";
 import { balances } from "./domain/ledger.js";
 import { createMemoryStore } from "./memory-store.js";
-import { formatBalance, formatHistory } from "./messages.js";
+import { formatBalance, formatHistory, formatRules } from "./messages.js";
 import { runDailyReminder } from "./scheduler.js";
 
 const names = { giName: "Gi", lucasName: "Lucas" };
@@ -18,6 +18,14 @@ test("a conexão tira o channel binding e o pooler na migração", () => {
   assert.match(direct, /sslmode=verify-full/);
   assert.match(direct, /ep-test\.c-3/);
   assert.equal(forPg(raw).includes("-pooler"), true);
+});
+
+test("as regras explicam a conta sem lista de comando", () => {
+  const rules = formatRules(names);
+  assert.match(rules, /Só vale escada/);
+  assert.match(rules, /sem cobrar o prêmio/);
+  assert.doesNotMatch(rules, /\//);
+  assert.doesNotMatch(rules, /fiz 40/);
 });
 
 test("saldo e histórico vazios explicam como começar", () => {

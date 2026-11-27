@@ -117,7 +117,7 @@ test("cada ação do modelo vira uma decisão executável", () => {
     ['{"action":"ask-partner"}', { action: "ask-partner" }],
     ['{"action":"hello"}', { action: "hello" }],
     ['{"action":"stop"}', { action: "stop" }],
-    ['{"action":"play","kind":"verdade"}', { action: "play", kind: "verdade", heat: 2 }],
+    ['{"action":"play","kind":"verdade"}', { action: "play", kind: "verdade" }],
     ['{"action":"play","kind":"verdade","heat":"3"}', { action: "play", kind: "verdade", heat: 3 }],
     ['{"action":"play","kind":"desafio","heat":"leve"}', { action: "play", kind: "desafio", heat: 1 }],
     ['{"action":"play","kind":"desafio","heat":"médio"}', { action: "play", kind: "desafio", heat: 2 }],

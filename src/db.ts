@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { balances, type Owner } from "./domain/ledger.js";
+import { decodeScene, encodeScene } from "./domain/scene.js";
 import type { RewardKind } from "./domain/rules.js";
 import type { Preference } from "./domain/prefs.js";
 import type { LedgerEvent, Redemption, Session, Store } from "./store.js";
@@ -21,12 +22,17 @@ type RedemptionRow = SessionRow & { kind: RewardKind };
 const SCHEMA = readSchema();
 
 function readSchema(): string {
-  const candidates = [
-    join(process.cwd(), "sql", "001_init.sql"),
-    join(dirname(fileURLToPath(import.meta.url)), "../sql/001_init.sql"),
+  const dirs = [
+    join(process.cwd(), "sql"),
+    join(dirname(fileURLToPath(import.meta.url)), "../sql"),
   ];
-  for (const path of candidates) {
-    if (existsSync(path)) return readFileSync(path, "utf8");
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    const files = readdirSync(dir)
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
+    if (files.length === 0) continue;
+    return files.map((file) => readFileSync(join(dir, file), "utf8")).join("\n");
   }
   throw new Error("Não achei sql/001_init.sql");
 }
@@ -195,6 +201,39 @@ function bind(pool: Pool, people: { giUserId: number | null }): Store {
         return;
       }
       await setMeta(pool, key, questionId);
+    },
+    async addMessage(input) {
+      const text = input.text.trim().slice(0, 2000);
+      if (!text) return;
+      await pool.query(
+        `INSERT INTO messages (chat_id, user_id, name, role, text) VALUES ($1, $2, $3, $4, $5)`,
+        [input.chatId, input.userId, input.name.slice(0, 80), input.role, text],
+      );
+      await pool.query(
+        `DELETE FROM messages WHERE chat_id = $1 AND id NOT IN (
+           SELECT id FROM messages WHERE chat_id = $1 ORDER BY id DESC LIMIT 400
+         )`,
+        [input.chatId],
+      );
+    },
+    async recentMessages(chatId, limit) {
+      const result = await pool.query<{ name: string; role: "user" | "bot"; text: string }>(
+        `SELECT name, role, text FROM messages WHERE chat_id = $1 ORDER BY id DESC LIMIT $2`,
+        [chatId, limit],
+      );
+      return result.rows.reverse();
+    },
+    async getScene(chatId) {
+      return decodeScene(await getMeta(pool, `scene:${chatId}`));
+    },
+    async setScene(chatId, scene) {
+      const key = `scene:${chatId}`;
+      const raw = encodeScene(scene);
+      if (!raw) {
+        await pool.query(`DELETE FROM meta WHERE key = $1`, [key]);
+        return;
+      }
+      await setMeta(pool, key, raw);
     },
   };
 }
