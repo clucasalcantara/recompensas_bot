@@ -20,7 +20,6 @@ import { houseUrl } from "./web/url.js";
 import { stairWrite, type Decision } from "./domain/reason.js";
 import { isExplicitStop, planTurn } from "./domain/scene.js";
 import { composePlay, decideIntent, phraseAccount, replyChat } from "./suggest.js";
-import { retrieveGuide } from "./rag.js";
 import { acceptClimate } from "./domain/phrase.js";
 import type { Store } from "./store.js";
 import {
@@ -500,6 +499,7 @@ async function sendPlay(
   const asked = ctx.message?.text?.trim() || kind;
   let guide: string | null = null;
   try {
+    const { retrieveGuide } = await import("./rag.js");
     guide = await retrieveGuide(store, { kind, level: heat ?? 2, query: asked });
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
