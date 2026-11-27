@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { balances, openAccount, redeemError, undoSessionError } from "./ledger.js";
+import { formatBalance } from "../messages.js";
 
 test("35 e depois 40 fecham um ciclo e deixam 15 no banco", () => {
   const result = balances(
@@ -55,6 +56,27 @@ test("cada um resgata só da própria escada", () => {
   assert.equal(result.gi.totalMinutes, 120);
   assert.equal(result.gi.bankMinutes, 0);
   assert.deepEqual(result.massagem, { earned: 10, spent: 10, available: 0 });
+});
+
+test("o saldo do bot fala em recompensa", () => {
+  const current = balances(
+    [
+      { minutes: 75, owner: "lucas" },
+      { minutes: 60, owner: "lucas" },
+      { minutes: 120, owner: "gi" },
+    ],
+    [
+      { kind: "boquete", minutes: 2 },
+      { kind: "massagem", minutes: 10 },
+    ],
+  );
+
+  assert.equal(
+    formatBalance({ giName: "Gi", lucasName: "Caio" }, current),
+    ["Caio", "75 min", "1 recompensa já coletada. 1 disponível.", "", "Gi", "Zerada", "2 recompensas já coletadas."].join(
+      "\n",
+    ),
+  );
 });
 
 test("o saldo aberto tira os ciclos já resgatados", () => {

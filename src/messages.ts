@@ -54,9 +54,9 @@ export function formatBalance(
   }
 
   const lines = [
-    formatPerson(config.lucasName, current.lucas, "Mamadinha", ORAL_PER_CYCLE),
+    formatPerson(config.lucasName, current.lucas, ORAL_PER_CYCLE),
     "",
-    formatPerson(config.giName, current.gi, "Massagem", MASSAGE_PER_CYCLE),
+    formatPerson(config.giName, current.gi, MASSAGE_PER_CYCLE),
   ];
 
   return lines.join("\n");
@@ -73,9 +73,9 @@ export function formatNothingToCollect(
   return [
     "Nenhum prêmio esperando.",
     "",
-    formatPerson(config.lucasName, current.lucas, "Mamadinha", ORAL_PER_CYCLE),
+    formatPerson(config.lucasName, current.lucas, ORAL_PER_CYCLE),
     "",
-    formatPerson(config.giName, current.gi, "Massagem", MASSAGE_PER_CYCLE),
+    formatPerson(config.giName, current.gi, MASSAGE_PER_CYCLE),
   ].join("\n");
 }
 
@@ -230,27 +230,27 @@ export function formatOwnBalance(
   owner: Owner,
   current: Balances,
 ): string {
-  if (owner === "gi") return formatPerson(config.giName, current.gi, "Massagem", MASSAGE_PER_CYCLE);
-  return formatPerson(config.lucasName, current.lucas, "Mamadinha", ORAL_PER_CYCLE);
+  if (owner === "gi") return formatPerson(config.giName, current.gi, MASSAGE_PER_CYCLE);
+  return formatPerson(config.lucasName, current.lucas, ORAL_PER_CYCLE);
 }
 
-function formatPerson(name: string, side: Side, prize: string, perCycle: number): string {
+function formatPerson(name: string, side: Side, perCycle: number): string {
   const open = openAccount(side, perCycle);
   const collected = perCycle > 0 ? Math.floor(side.reward.spent / perCycle) : 0;
-  const collectedLine =
-    collected === 0 ? "" : collected === 1 ? "\n1 recompensa já coletada." : `\n${collected} recompensas já coletadas.`;
-  if (open.totalMinutes === 0 && side.reward.available <= 0) {
-    return `${name}\nZerada. ${prize}: 0 min.${collectedLine}`;
-  }
-  const lines = [
-    name,
-    `${open.totalMinutes} min · ${open.bankMinutes} min no banco`,
-    `${prize}: ${Math.max(0, side.reward.available)} min`,
-  ];
-  if (collectedLine) lines.push(collectedLine.trim());
-  const next = minutesToNext(open);
-  if (next) lines.push(next);
+  const ready = perCycle > 0 ? Math.floor(Math.max(0, side.reward.available) / perCycle) : 0;
+  const lines = [name, open.totalMinutes === 0 ? "Zerada" : `${open.totalMinutes} min`];
+  const status = rewardLine(collected, ready);
+  if (status) lines.push(status);
   return lines.join("\n");
+}
+
+function rewardLine(collected: number, ready: number): string | null {
+  const parts: string[] = [];
+  if (collected === 1) parts.push("1 recompensa já coletada.");
+  else if (collected > 1) parts.push(`${collected} recompensas já coletadas.`);
+  if (ready === 1) parts.push("1 disponível.");
+  else if (ready > 1) parts.push(`${ready} disponíveis.`);
+  return parts.length === 0 ? null : parts.join(" ");
 }
 
 function minutesToNext(side: { totalMinutes: number; bankMinutes: number; minutesToNextCycle: number }): string | null {
