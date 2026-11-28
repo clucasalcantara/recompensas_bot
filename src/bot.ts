@@ -240,6 +240,12 @@ async function talk(
   await ctx.replyWithChatAction("typing");
   const scene = chatId ? await store.getScene(chatId) : null;
   const sceneWasOpen = scene !== null;
+  const direct = parseStairs(text, false);
+  if (direct.type === "stairs") {
+    if (chatId) await store.setScene(chatId, null);
+    await commitStairs(ctx, store, config, direct.minutes, direct.note, sceneWasOpen);
+    return;
+  }
   const recent = chatId
     ? (await store.recentMessages(chatId, 12)).map((line) => `${line.name}: ${line.text}`)
     : [];

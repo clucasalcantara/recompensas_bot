@@ -219,6 +219,21 @@ test("preferência nova não vira convite, e papo comum também não", () => {
   assert.equal(pushed.invite, null);
 });
 
+test("+25 grava a escada mesmo se o modelo só responder beleza", () => {
+  const plan = planTurn({
+    text: "+25",
+    place: "group",
+    speaker: "gi",
+    speakerName: "Gi",
+    addressed: true,
+    scene: open,
+    choice: choice({ action: "chat", say: "Mais 25, beleza!" }),
+  });
+  assert.equal(plan.reply, "ledger");
+  assert.equal(plan.scene, null);
+  assert.deepEqual(plan.decision, { action: "stairs", minutes: 25, note: null });
+});
+
 test("escada soma na pessoa certa e o prêmio novo não cobra", () => {
   const plan = planTurn({
     text: "+35",

@@ -98,9 +98,18 @@ export function planTurn(input: {
     return { ...base, reply: "stop", text: "Parou.", scene: null };
   }
 
-  const stair = parseStairs(input.text, false).type === "stairs";
-  if (input.place === "group" && !input.addressed && !stair) {
+  const stair = parseStairs(input.text, false);
+  if (input.place === "group" && !input.addressed && stair.type !== "stairs") {
     return base;
+  }
+  if (stair.type === "stairs") {
+    return {
+      ...base,
+      reply: "ledger",
+      scene: null,
+      decision: { action: "stairs", minutes: stair.minutes, note: stair.note },
+      recipient: "speaker",
+    };
   }
 
   if (!input.choice) {
